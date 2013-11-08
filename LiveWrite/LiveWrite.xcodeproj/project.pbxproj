@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		B5DFA4D2182D52BD0019B0C5 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B5DFA4D1182D52BD0019B0C5 /* main.cpp */; };
 		B5DFA4D4182D52BD0019B0C5 /* LiveWrite.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */; };
+		B5DFA4DB182D53E90019B0C5 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5DFA4DA182D53E90019B0C5 /* OpenGL.framework */; };
+		B5DFA4DD182D53ED0019B0C5 /* GLUT.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5DFA4DC182D53ED0019B0C5 /* GLUT.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -28,6 +30,10 @@
 		B5DFA4CE182D52BD0019B0C5 /* LiveWrite */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LiveWrite; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5DFA4D1182D52BD0019B0C5 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = LiveWrite.1; sourceTree = "<group>"; };
+		B5DFA4DA182D53E90019B0C5 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
+		B5DFA4DC182D53ED0019B0C5 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = System/Library/Frameworks/GLUT.framework; sourceTree = SDKROOT; };
+		B5DFA4DE182D54A70019B0C5 /* utilities.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = utilities.h; sourceTree = "<group>"; };
+		B5DFA4DF182D5A350019B0C5 /* stroke.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = stroke.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -35,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B5DFA4DD182D53ED0019B0C5 /* GLUT.framework in Frameworks */,
+				B5DFA4DB182D53E90019B0C5 /* OpenGL.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -44,6 +52,8 @@
 		B5DFA4C5182D52BD0019B0C5 = {
 			isa = PBXGroup;
 			children = (
+				B5DFA4DC182D53ED0019B0C5 /* GLUT.framework */,
+				B5DFA4DA182D53E90019B0C5 /* OpenGL.framework */,
 				B5DFA4D0182D52BD0019B0C5 /* LiveWrite */,
 				B5DFA4CF182D52BD0019B0C5 /* Products */,
 			);
@@ -61,6 +71,8 @@
 			isa = PBXGroup;
 			children = (
 				B5DFA4D1182D52BD0019B0C5 /* main.cpp */,
+				B5DFA4DE182D54A70019B0C5 /* utilities.h */,
+				B5DFA4DF182D5A350019B0C5 /* stroke.h */,
 				B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */,
 			);
 			path = LiveWrite;
@@ -181,6 +193,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
