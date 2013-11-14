@@ -9,6 +9,8 @@
 #include <iostream>
 #include "utilities.h"
 #include "stroke.h"
+#include <map>
+#include <unistd.h>
 
 
 static float mouseX, mouseY;
@@ -26,10 +28,12 @@ struct TrainEx {
     Glyph g;
     char label;
 };
-static char currlabel = 'A' - 1;
-static vector<TrainEx> glyphs;
+static char currlabel = 'A';
+static map<char, vector<Glyph>> glyphs;
+static Glyph currGlyph;
 
 static bool CirclesOn = true;
+
 
 Point RandDir(Point dir, float scale = 1.f) {
     Point ret(rng.GetNudge(), rng.GetNudge());
@@ -79,8 +83,8 @@ void MouseCallback(int button, int state, int x, int y) {
     //button = GLUT_LEFT_BUTTON, GLUT_MIDDLE_BUTTON, or GLUT_RIGHT_BUTTON
     //state = GLUT_UP or GLUT_DOWN
     UpdateMouse(x,y);
-    if (state == GLUT_UP) glyphs.back().g.MouseUp();
-    if (state == GLUT_DOWN) glyphs.back().g.MouseDown();
+    if (state == GLUT_UP) currGlyph.MouseUp();
+    if (state == GLUT_DOWN) currGlyph.MouseDown();
 }
 
 vector<Point> mice;
@@ -103,7 +107,7 @@ void MouseMotionCallback(int x, int y) {
      */
     UpdateMouse(x,y);
     
-    glyphs.back().g.AddPoint(mouse, ElapsedMillis());
+    currGlyph.AddPoint(mouse, ElapsedMillis());
     
     DisplayCallback();
     
@@ -114,16 +118,98 @@ void PassiveMotionCallback(int x, int y) {
     
 }
 
+void NewGlyph() {
+    if (currGlyph.points.size()) {
+        cout << "Normalizing..." << endl;
+        currGlyph.Normalize();
+        DrawClear();
+        currGlyph.Draw();
+        DrawSwap();
+        glyphs[currlabel].push_back(currGlyph);
+        currGlyph.Empty();
+        cout << "Recorded glyph with label " << currlabel;
+        cout << " (example " << glyphs[currlabel].size() << ")" << endl;
+    }
+}
+
+const static string wdir = "/Users/ben/Documents/projects/LiveWrite/LiveWrite/LiveWrite/";
+void WriteData(string filename, map<char, vector<Glyph>> &data) {
+    string path = wdir + filename;
+    ofstream outfile(path);
+    int nex = 0;
+    for (auto &p : data) nex += p.second.size();
+    outfile << "Number_of_examples: " << nex << endl;
+    for (auto &p : data) {
+        for (auto &g : p.second) {
+            outfile << "Label: " << p.first << endl;
+            size_t npoints = g.points.size();
+            outfile << "Points: " << npoints << endl;
+            outfile << "Width: " << g.width << "\nDuration: " << g.duration ;
+            outfile << "\nCentroid: " << g.centroid[0] << " " << g.centroid[1] << endl;
+            for (size_t i = 0; i < npoints; ++i)
+                outfile << g.times[i] << " " << g.points[i][0] << " " << g.points[i][1] << endl;
+            outfile << endl;
+        }
+    }
+}
+
+void SimulateGlyph(Glyph &g, float totaltime = 1000.f, float extend = 1.5f) {
+    SeedStartTime();
+    float time;
+    while ((time = ElapsedMillis()) <= totaltime * extend) {
+        DrawClear();
+        for (int i = 0; i < g.times.size(); ++i) {
+            if (totaltime * g.times[i] < time) Circle(g.points[i], .001);
+        }
+        DrawSwap();
+        //usleep(10000);
+    }
+}
+
+void ReadData(string filename, map<char, vector<Glyph>> &data) {
+    string path = wdir + filename;
+    ifstream infile(path);
+    string dummy;
+    int nexamples;
+    infile >> dummy >> nexamples;
+    cout << "Reading in " << nexamples << " data examples" << endl;
+    for (int i = 0; i < nexamples; ++i) {
+        TrainEx curr;
+        int npoints;
+        infile >> dummy >> curr.label >> dummy >> npoints;
+        cout << "Label " << curr.label << " with " << npoints << " points" << endl;
+        infile >> dummy >> curr.g.width >> dummy >> curr.g.duration;
+        infile >> dummy >> curr.g.centroid[0] >> curr.g.centroid[1];
+        for (int j = 0; j < npoints; ++j) {
+            float t;
+            Point p;
+            infile >> t >> p[0] >> p[1];
+            curr.g.times.push_back(t);
+            curr.g.points.push_back(p);
+        }
+        data[curr.label].push_back(curr.g);
+    }
+}
+
+static bool WaitingForChar = false;
 static int gindex = 0;
 void KeyCallback(unsigned char key, int x, int y) {
     UpdateMouse(x, y);
+    if (WaitingForChar) {
+        currlabel = key;
+        cout << "Changed label to " << currlabel << endl;
+        WaitingForChar = false;
+        return;
+    }
     switch(key) {
-        case 'r':
-            currlabel++;
+        case '`':
+            WriteData("data.dat", glyphs);
+            break;
+        case '.':
+            WaitingForChar = true;
+            break;
         case ' ':
-
-            glyphs.push_back(TrainEx({Glyph(), currlabel}));
-            cout << "Started new glyph with label " << currlabel << endl;
+            NewGlyph();
             break;
         case 'd':
             DrawClear();
@@ -133,6 +219,29 @@ void KeyCallback(unsigned char key, int x, int y) {
             break;
         case 'q':
             exit(0);
+            break;
+        case '1':
+            ReadData("data.dat", glyphs);
+            break;
+        case '2':
+            for (auto &p : glyphs) {
+                Glyph composite;
+                for (Glyph &g : p.second) {
+                    composite.points.insert(composite.points.end(), g.points.begin(), g.points.end());
+                    composite.times.insert(composite.times.end(), g.times.begin(), g.times.end());
+
+                }
+                SimulateGlyph(composite);
+            }
+            break;
+        case '3':
+            for (auto &p : glyphs) {
+                for (int i = 0; i < p.second.size(); ++i) {
+                    cout << "Simulating " << p.first << "...";
+                    SimulateGlyph(p.second[i], 1000, 1.5);
+                    cout << "done" << endl;
+                }
+            }
             break;
     }
 }
@@ -197,7 +306,7 @@ void DisplayCallback() {
     glClear(GL_COLOR_BUFFER_BIT);
     
     //glDrawPixels(width, height, GL_RGB, GL_UNSIGNED_BYTE, micePix);
-    if (glyphs.size()) glyphs.back().g.Draw();
+    currGlyph.Draw();
     
     //for (int i = 0; i < mice.size(); ++i) Circle(mice[i], .001);
     glutSwapBuffers();
