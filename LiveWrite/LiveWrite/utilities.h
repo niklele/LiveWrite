@@ -366,15 +366,23 @@ inline float Det(const Point &u, const Point &v) {
 }
 
 inline float pCos(const Point &u, const Point &v) {
-    return Dot(u, v) / (Length(u) * Length(v));
+    float ret = Dot(u, v) / (Length(u) * Length(v));
+    ret = std::max(-1.f, std::min(1.f,ret));
+    return ret;
 }
 
 inline float pSin(const Point &u, const Point &v) {
-    return Det(u, v) / (Length(u) * Length(v));
+    float ret = Det(u, v) / (Length(u) * Length(v));
+    ret = std::max(-1.f, std::min(1.f,ret));
+    return ret;
 }
 
 inline float Bearing(const Point &u, const Point &v) {
-    return asin(pSin(u,v));
+    if (pCos(u,v) >= 0) {
+        return asin(pSin(u,v));
+    } else {
+        return M_PI - asin(pSin(u,v));
+    }
 }
 
 
@@ -475,6 +483,10 @@ float NormalizeFloatSet(vector<float> &f) {
     return .5f * (max - min);
 }
 
+float NormalPDF(float x, float u, float s) {
+    return exp(-(x-u) * (x-u) / s / s * .5f) / s / sqrtf(2.f * M_PI);
+}
+
 void LineCon(float x1, float y1, float x2, float y2, float frac = 0.f) {
     float a[] = {x1,y1};
     float b[] = {x2,y2};
@@ -486,6 +498,15 @@ void LineCon(float x1, float y1, float x2, float y2, float frac = 0.f) {
     glBegin(GL_LINES);
     glVertex2f(uu[0], uu[1]);
     glVertex2f(vv[0], vv[1]);
+    glEnd();
+}
+
+void DrawBox(float x, float y, float dx, float dy) {
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(x, y);
+    glVertex2f(x, y + dy);
+    glVertex2f(x + dx, y + dy);
+    glVertex2f(x + dx, y);
     glEnd();
 }
 

@@ -31,6 +31,7 @@ struct TrainEx {
 static char currlabel = 'A';
 static map<char, vector<Glyph>> glyphs;
 static Glyph currGlyph;
+static map<char, vector<float>> phivals;
 
 static bool CirclesOn = true;
 
@@ -153,17 +154,100 @@ void WriteData(string filename, map<char, vector<Glyph>> &data) {
     }
 }
 
-void SimulateGlyph(Glyph &g, float totaltime = 1000.f, float extend = 1.5f) {
-    SeedStartTime();
+void DrawCurvature(Glyph &g, float time) {
+    if (g.times.size() < 2) return;
+    LineCon(0, .5, 1, .5);
+    Color(1,0,0);
+    Point prev = g.points[1] - g.points[0];
+    Point graphpt(0,.5);
+    for (int i = 2; i < g.times.size(); ++i) {
+        if (g.times[i] >= time) Color(0,1,0);
+        Point next = g.points[i] - g.points[i-1];
+        Point ngpt(g.times[i], .5f + Bearing(prev, next) / M_PI * .5f);
+        LineCon(graphpt, ngpt);
+        graphpt = ngpt;
+        prev = next;
+
+    }
+    
+    Color(1,1,1);
+}
+
+void PlotCurvature(Glyph &g, float time) {
+    if (g.times.size() < 2) return;
+    LineCon(0, .5, 1, .5);
+    Color(1,0,0);
+    Point prev = g.points[1] - g.points[0];
+    Point graphpt(0,.5);
+    for (int i = 2; i < g.times.size(); ++i) {
+        if (g.times[i] >= time) Color(0,1,0);
+        else Color(1,0,0);
+        Point next = g.points[i] - g.points[i-1];
+        Point ngpt(g.times[i], .5f + Bearing(prev, next) / M_PI * .5f);
+        Circle(ngpt, .001);
+        graphpt = ngpt;
+        prev = next;
+        
+    }
+    
+    Color(1,1,1);
+}
+
+void DumpCurvatures(Glyph &g, vector<int> &curvs, int nres, bool verbose = false) {
+    if (g.times.size() < 2) return;
+    Point prev = g.points[1] - g.points[0];
+    if (verbose) cout << "\nBeginning..." << endl;
+    for (int i = 2; i < g.times.size(); ++i) {
+        Point next = g.points[i] - g.points[i-1];
+        int xt = nres * g.times[i];
+        int yc = nres * (.5f + Bearing(prev, next) / M_PI * .5f);
+        if (verbose) cout << "Adding at timeval " << xt << " curval " << yc << endl;
+        if (verbose) cout << "Bearing here is " << Bearing(prev, next) / M_PI << endl;
+        curvs[xt * nres + yc]++;
+        prev = next;
+    }
+}
+
+void DrawCurvHist(vector<int> &curvs, int nres) {
+    int max = 0;
+    for (int i : curvs) max = std::max(i,max);
+    for (int x = 0; x < nres * nres; ++x) {
+        Color(0, 0, (float)(curvs[x]) / (max));
+        DrawBox((float)(x / nres) / nres, (float)(x % nres) / nres, 1.f / nres, 1.f / nres);
+    }
+    Color(1,1,1);
+}
+
+void SimulateBigGlyph(Glyph &g, float totaltime, float extend,
+                                    vector<int> &curvs, int nres) {
     float time;
+    SeedStartTime();
     while ((time = ElapsedMillis()) <= totaltime * extend) {
         DrawClear();
+        DrawCurvHist(curvs, nres);
         for (int i = 0; i < g.times.size(); ++i) {
             if (totaltime * g.times[i] < time) Circle(g.points[i], .001);
         }
         DrawSwap();
         //usleep(10000);
     }
+}
+
+void SimulateGlyph(Glyph &g, float totaltime = 1000.f, float extend = 1.5f) {
+    cout << "running sim...";
+    float time;
+    SeedStartTime();
+    while ((time = ElapsedMillis()) <= totaltime * extend) {
+        DrawClear();
+        //DrawCurvature(g,  time / totaltime);
+        PlotCurvature(g, time/totaltime);
+        for (int i = 0; i < g.times.size(); ++i) {
+            if (totaltime * g.times[i] < time) Circle(g.points[i], .001);
+        }
+        DrawSwap();
+        usleep(10000);
+    }
+    cout << "over." << endl;
 }
 
 void ReadData(string filename, map<char, vector<Glyph>> &data) {
@@ -191,6 +275,89 @@ void ReadData(string filename, map<char, vector<Glyph>> &data) {
     }
 }
 
+void PostPhiVals(vector<float> &phis, vector<int> &counts, int nres) {
+    int denom = 0;
+    phis.resize(nres*nres);
+    for (int &i : counts) denom += i;
+    for (int i = 0; i < nres * nres; ++i) {
+        phis[i] = log((float)counts[i]) - log((float)denom);
+        //cout << "putting in " << phis[i] << endl;
+    }
+}
+
+void NaiveBayes() {
+    if (currGlyph.points.size()) {
+        cout << "Normalizing..." << endl;
+        currGlyph.Normalize();
+        DrawClear();
+        currGlyph.Draw();
+        DrawSwap();
+        
+        int nres = 64;
+        vector<int> curvs(nres * nres, 0);
+        cout << "getting curvatures...";
+        DumpCurvatures(currGlyph, curvs, nres, false);
+        DrawClear();
+        DrawCurvHist(curvs, nres);
+        DrawSwap();
+        map<char, float> probs;
+        cout << "calculating probabilities...";
+        for (int i = 0; i < curvs.size(); ++i) {
+            for (auto &p : phivals) {
+                probs[p.first] += curvs[i] * p.second[i];
+            }
+        }
+        vector<pair<char, float>> problist;
+        for (auto &p : probs) problist.push_back(p);
+        sort(problist.begin(), problist.end(),
+             [](const pair<char, float>& one, const pair<char, float>& two) {
+                 return one.second > two.second; } );
+        cout << "getting top 3 max..." << endl;
+        for (int i = 0; i < 3; ++i)
+            cout << problist[i].first << ": " << problist[i].second << endl;
+
+        currGlyph.Empty();
+    }
+}
+
+Glyph InterpGlyph(Glyph &g, int num) {
+    Glyph ret;
+    for (int n = 0; n <= num; ++n) {
+        float t = (float)n / num;
+        int i = 1;
+        for (;i < g.times.size(); ++i) {
+            if (g.times[i] >= t) break;
+        }
+        float interp = (t - g.times[i-1]) / (g.times[i] - g.times[i-1]);
+        ret.points.push_back(g.points[i-1] * (1-interp) + g.points[i] * interp);
+        ret.times.push_back(t);
+        cout << "Pushed back " << ret.points.back() << " (between " << i-1 << " and " << i << ")" << endl;
+        cout << "t was " << t << ", interp was " << interp << endl;
+        cout << "sandwich is " << g.times[i-1]  << " to " << g.times[i] << endl;
+        cout << "points " << g.points[i-1] << ", " << g.points[i] << endl;
+    }
+    //ret.Normalize();
+    return ret;
+}
+
+Glyph ReduceGlyph(Glyph &g, int num, float stdev) {
+    Glyph ret;
+    for (int n = 0; n <= num; ++n) {
+        float t = (float)n / num;
+        Point wavg;
+        float w = 0;
+        for (int i = 0; i < g.times.size(); ++i) {
+            float weight = NormalPDF(g.times[i], t, stdev);
+            wavg += g.points[i] * weight;
+            w += weight;
+        }
+        ret.points.push_back(wavg / w);
+        ret.times.push_back(t);
+    }
+    //ret.Normalize();
+    return ret;
+}
+
 static bool WaitingForChar = false;
 static int gindex = 0;
 void KeyCallback(unsigned char key, int x, int y) {
@@ -209,7 +376,19 @@ void KeyCallback(unsigned char key, int x, int y) {
             WaitingForChar = true;
             break;
         case ' ':
+            //NaiveBayes();
+        {
+            currGlyph.Normalize();
+            Glyph currInt = InterpGlyph(currGlyph, 500);
+            SimulateGlyph(currInt, 2000, 1.4);
+            currInt = ReduceGlyph(currInt, 100, .05);
+            SimulateGlyph(currInt, 2000, 1.4);
+            cout << currInt.points[5] << " at time " << currInt.times[5] << endl;
+            currInt.Normalize();
+            cout << currInt.points[5] << " at time " << currInt.times[5] << endl;
+            //SimulateGlyph(currInt, 2000, 1.4);
             NewGlyph();
+        }
             break;
         case 'd':
             DrawClear();
@@ -223,16 +402,25 @@ void KeyCallback(unsigned char key, int x, int y) {
         case '1':
             ReadData("data.dat", glyphs);
             break;
-        case '2':
+        case '2': {
+            phivals.clear();
             for (auto &p : glyphs) {
                 Glyph composite;
+                int nres = 64;
+                vector<int> curvs(nres * nres, 1);
                 for (Glyph &g : p.second) {
                     composite.points.insert(composite.points.end(), g.points.begin(), g.points.end());
                     composite.times.insert(composite.times.end(), g.times.begin(), g.times.end());
-
+                    DumpCurvatures(g, curvs, nres);
                 }
-                SimulateGlyph(composite);
+                PostPhiVals(phivals[p.first], curvs, nres);
+                cout << "Posting phis for " << p.first << endl;
+                Glyph reduced = ReduceGlyph(composite, 100, .05);
+                //SimulateGlyph(reduced, 2000, 1.5);
+                SimulateBigGlyph(composite, 3000, 1.5, curvs, nres);
             }
+            cout << "Done posting phis" << endl;
+        }
             break;
         case '3':
             for (auto &p : glyphs) {
