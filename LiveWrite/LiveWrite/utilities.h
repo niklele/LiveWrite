@@ -470,7 +470,7 @@ float NormalizeFloatSet(vector<float> &f) {
         min = min2f(n,min);
         max = max2f(n,max);
     }
-    for (float n : f)
+    for (float &n : f)
         n = (n - min) / (max - min);
     return .5f * (max - min);
 }

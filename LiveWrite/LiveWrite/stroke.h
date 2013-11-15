@@ -33,11 +33,27 @@ public:
 
 class Glyph {
 public:
-    void MouseDown() { strokes.push_back(Stroke()); }
-    void MouseUp() { strokes.back().Normalize(); }
-    void AddPoint(const Point &p, float t) { strokes.back().AddPoint(p,t); }
-    void Draw() { for (Stroke &s : strokes) s.Draw(); }
-    vector<Stroke> strokes;
+    void MouseDown() { ; }
+    void MouseUp() { ; }
+    void AddPoint(const Point &p, float t) {
+        points.push_back(p);
+        times.push_back(t);
+    }
+    void Draw() {
+        for (Point &p : points) Circle(p, .001);
+    }
+    void Normalize() {
+        width = NormalizePointSet(points, centroid);
+        duration = NormalizeFloatSet(times);
+    }
+    void Empty() {
+        points.clear();
+        times.clear();
+    }
+    vector<Point> points;
+    vector<float> times;
+    float width, duration;
+    Point centroid;
 };
 
 
