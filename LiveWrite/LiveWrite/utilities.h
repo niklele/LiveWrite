@@ -22,10 +22,11 @@
 #include <iomanip>
 #include <cstring>
 #include <execinfo.h>
+#include <functional>
 
 using namespace std;
 
-static int width = 700;
+static int width = 600;
 static int height = width;
 const static float EPSILON = .000001f;
 
@@ -157,7 +158,10 @@ void PutOnScreen(float x[2]) {
     }
 }
 
+float Clamp(float x) { return std::min(std::max(x, 0.f), 1.f); }
+
 void Color(float r, float g, float b) {
+    r = Clamp(r); g = Clamp(g); b = Clamp(b);
     glColor3f(r, g, b);
 }
 
@@ -385,6 +389,29 @@ inline float Bearing(const Point &u, const Point &v) {
     }
 }
 
+Point RandDir(Point dir, float scale = 1.f) {
+    Point ret(rng.GetNudge(), rng.GetNudge());
+    while (Dot(ret, dir) < 0) {
+        ret = Point(rng.GetNudge(), rng.GetNudge());
+    }
+    ret *= scale;
+    return ret;
+}
+
+void FillRand(float *f, int num) {
+    for (int i = 0; i < num; ++i)
+        f[i] = rng();
+}
+
+void RandCol(float col[], float low = 0.f) {
+    FillRand(col, 3);
+    float mag = col[0]*col[0] + col[1]*col[1] + col[2]*col[2];
+    while (mag < low) {
+        FillRand(col, 3);
+        mag = col[0]*col[0] + col[1]*col[1] + col[2]*col[2];
+    }
+}
+
 
 inline float Dist(const Point &p, const Point &u) {
     return Length(p-u);
@@ -452,7 +479,7 @@ Point Centroid(vector<Point> p) {
     return ret / (float)p.size();
 }
 
-float SqCenterBBox(vector<Point> p, Point &min, Point &max, Point &centroid) {
+float SqCenterBBox(vector<Point> &p, Point &min, Point &max, Point &centroid) {
     centroid = Centroid(p);
     float maxdist;
     for (Point &pt : p) {
@@ -467,8 +494,9 @@ float SqCenterBBox(vector<Point> p, Point &min, Point &max, Point &centroid) {
 float NormalizePointSet(vector<Point> &p, Point &centroid) {
     Point min, max;
     float ret = SqCenterBBox(p, min, max, centroid);
-    for (Point &pt : p)
+    for (Point &pt : p) {
         pt = (pt - min) / (max - min);
+    }
     return ret;
 }
 
@@ -481,6 +509,22 @@ float NormalizeFloatSet(vector<float> &f) {
     for (float &n : f)
         n = (n - min) / (max - min);
     return .5f * (max - min);
+}
+
+float SquareDif(vector<float> &a, vector<float> &b) {
+    float res = 0;
+    int min = (int)std::min(a.size(), b.size());
+    for (int i = 0; i < min; ++i)
+        res += (a[i]-b[i])*(a[i]-b[i]);
+    return res;
+}
+
+float Correlation(vector<float> &a, vector<float> &b) {
+    float res = 0;
+    int min = (int)std::min(a.size(), b.size());
+    for (int i = 0; i < min; ++i)
+        res += a[i] * b[i];
+    return res;
 }
 
 float NormalPDF(float x, float u, float s) {
@@ -530,6 +574,129 @@ void SetBrightColor(float thresh) {
         for (int i = 0; i < 3; ++i)
             c[i] = rng();
     Color(c);
+}
+
+void DrawCosts(vector<float> &costs, int n) {
+    float max = costs[n*n-1] * 2.f;
+    //for (float f : costs) max = max2f(max, f);
+    cout << "Path is " << max / 2 << endl;
+
+    for (int x = 0; x < n * n; ++x) {
+        float col = costs[x] / max;
+        Color(col,col,col);
+        DrawBox((float)(x % n) / n, (float)(x / n) / n, 1.f / n, 1.f / n);
+    }
+}
+
+void DrawCosts(vector<float> &costs, int m, int n) {
+    float max = costs[m*n-1] * 2.f;
+    
+    cout << "Path is " << max / 2 << endl;
+    
+    for (int x = 0; x < m * n; ++x) {
+        float col = costs[x] / max;
+        Color(col,col,col);
+        DrawBox((float)(x % m) / m, (float)(x / m) / n, 1.f / m, 1.f / n);
+    }
+}
+
+template <class T>
+float LeastCost(vector<T> &a, vector<T> &b, function<float(const T&, const T&)> costfunc,
+                float dbias = 1.f, bool draw = true) {
+    int n = (int)std::min(a.size(), b.size());
+    //cout << "n is " << n << endl << "Making cost mat" << endl;
+    vector<float> costmat(n * n, 0);
+    for (int j = 0; j < n; ++j)
+        for (int i = 0; i < n; ++i)
+            costmat[j * n + i] = costfunc(a[i], b[j]);
+    
+    vector<float> costs(n * n, 0);
+    //cout << "Dynprog the costs..." << endl;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            float cost = (!i && !j ? 0 : INFINITY);
+            if (i > 0) cost = min2f(cost, costs[j * n + (i-1)] * dbias);
+            if (j > 0) cost = min2f(cost, costs[(j-1) * n + i] * dbias);
+            if (i && j) cost = min2f(cost, costs[(j-1) * n + (i-1)]);
+            costs[j * n + i] = cost + costmat[j * n + i];
+        }
+    }
+    //cout << "Posting result." << endl;
+    if (draw)
+        DrawCosts(costs, n);
+    return costs[n * n - 1];
+}
+
+float LeastCostFloat(vector<float> &a, vector<float> &b, float dbias, bool draw = true) {
+    return LeastCost<float>(a, b, [](const float &x, const float &y) { return (x-y)*(x-y); }, dbias, draw );
+}
+
+template <class T>
+float LeastCostInside(vector<T> &a, vector<T> &b, function<float(const T&, const T&)> costfunc,
+                      vector<pair<int, int>> &indices, float dbias = 1.f, bool draw = true) {
+    bool verbose = false;
+    dbias = 1.f;
+    int m = (int)a.size();
+    int n = (int)b.size();
+    if (verbose) cout << "Finding " << m << " in " << n << endl;
+    //cout << "n is " << n << endl << "Making cost mat" << endl;
+    vector<float> costmat(n * (m + 2), 0);
+    for (int j = 0; j < n; ++j)
+        for (int i = 1; i < m + 1; ++i)
+            costmat[j * (m+2) + i] = costfunc(a[i - 1], b[j]);
+    if (verbose) cout << "Created costmat" << endl;
+    vector<float> costs(n * (m + 2), 0);
+    vector<int> previndex(n * (m + 2), 0);
+    if (verbose) cout << "Dynprog the costs..." << endl;
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < m + 2; ++i) {
+            float cost = (!i && !j ? 0 : INFINITY);
+            previndex[j * (m+2) + i] = -1;
+            if (i > 0 && cost > costs[j * (m+2) + (i-1)]) {
+                cost = costs[j * (m+2) + (i-1)];
+                previndex[j * (m+2) + i] = j * (m+2) + (i-1);
+            }   //cost = min2f(cost, costs[j * (m+2) + (i-1)] * dbias);
+            if (j > 0 && cost > costs[(j-1) * (m+2) + i]) {
+                cost = costs[(j-1) * (m+2) + i];
+                previndex[j * (m+2) + i] = (j-1) * (m+2) + i;
+            }   //cost = min2f(cost, costs[(j-1) * (m+2) + i] * dbias);
+            if (i && j && cost > costs[(j-1) * (m+2) + (i-1)]) {
+                cost = costs[(j-1) * (m+2) + (i-1)];
+                previndex[j * (m+2) + i] = (j-1) * (m+2) + (i-1);
+            }   //cost = min2f(cost, costs[(j-1) * (m+2) + (i-1)]);
+            costs[j * (m+2) + i] = cost + costmat[j * (m+2) + i];
+        }
+    }
+
+    
+    if (verbose) cout << "Posting result." << endl;
+    if (draw)
+        DrawCosts(costs, m + 2, n);
+    
+    
+    vector<int> path;
+    int index = n * (m + 2) - 1;
+    Point prev(1,1);
+    Color(1,0,0);
+    m += 2;
+    while (previndex[index] >= 0) {
+        path.push_back(index);
+        index = previndex[index];
+        Point next((float)(index % m) / m + .5f / m, (float)(index / m) / n + .5f / n);
+        if (draw) {
+            LineCon(prev, next);
+            prev = next;
+        }
+    }
+    for (int i = (int)path.size() - 1; i >= 0; --i)
+        indices.push_back({path[i] % m - 1, path[i] / m});
+    return costs[n * m - 1];
+}
+
+float LeastCostFloatInside(vector<float> &a, vector<float> &b,
+                           vector<pair<int, int>> &indices, float dbias, bool draw = true) {
+    return LeastCostInside<float>(a, b, [](const float &x, const float &y) { return (x-y)*(x-y); },
+                                  indices, dbias, draw );
 }
 
 #endif
