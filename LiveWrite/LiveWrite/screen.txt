@@ -1,0 +1,4 @@
+First screenshot is s vs s at 0.0758107
+Second is s vs g at 4.88093
+Third is s vs s (11 vs 10) at 0.144983, dbias 2.0
+Fourth is s v s (same) at 0.0395069, dbias .5

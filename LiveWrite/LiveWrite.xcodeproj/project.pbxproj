@@ -30,6 +30,9 @@
 		B58303761834B81D00842264 /* benlwmouse0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwmouse0.dat; sourceTree = "<group>"; };
 		B58303771835A01100842264 /* data.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = data.dat; sourceTree = "<group>"; };
 		B5A1E5CF1838348400FDBE04 /* benlwtrack0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwtrack0.dat; sourceTree = "<group>"; };
+		B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwmouse1.dat; sourceTree = "<group>"; };
+		B5A1E5D11839E54400FDBE04 /* sarahlwmouse0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = sarahlwmouse0.dat; sourceTree = "<group>"; };
+		B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = sarahtest0.dat; sourceTree = "<group>"; };
 		B5DFA4CE182D52BD0019B0C5 /* LiveWrite */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LiveWrite; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5DFA4D1182D52BD0019B0C5 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = LiveWrite.1; sourceTree = "<group>"; };
@@ -74,6 +77,9 @@
 			isa = PBXGroup;
 			children = (
 				B58303761834B81D00842264 /* benlwmouse0.dat */,
+				B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */,
+				B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */,
+				B5A1E5D11839E54400FDBE04 /* sarahlwmouse0.dat */,
 				B5A1E5CF1838348400FDBE04 /* benlwtrack0.dat */,
 				B58303771835A01100842264 /* data.dat */,
 				B5DFA4D1182D52BD0019B0C5 /* main.cpp */,

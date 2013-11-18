@@ -16,6 +16,8 @@
 static float mouseX, mouseY;
 static Point mouse, mouseOld;
 const static int NRES = 100;
+const static float STDEV = .03f;
+const static int UPSCALE = 500;
 
 void DisplayCallback();
 
@@ -50,7 +52,7 @@ Point MouseDelta(int x, int y) {
 
 
 static unsigned char micePix[700 * 700 * 3];
-void Analyze(bool verbose = false);
+char Analyze(Glyph &g, bool verbose = false);
 static Timer timer;
 static bool timerValid = false;
 void MouseCallback(int button, int state, int x, int y) {
@@ -115,51 +117,6 @@ void WriteData(string filename, map<char, vector<Glyph>> &data) {
         }
     }
 }
-
-void GetCurvature(Glyph &g, vector<float> &curv, bool accum = false) {
-    if (g.times.size() < 2) return;
-    Point prev = g.points[1] - g.points[0];
-    float acc = 0;
-
-    for (int i = 2; i < g.times.size(); ++i) {
-        Point next = g.points[i] - g.points[i-1];
-        acc = Bearing(prev, next) / M_PI / 2.f + (accum ? acc : 0);
-        curv.push_back(acc);
-        prev = next;
-    }
-}
-
-void GetCurvReverse(Glyph &g, vector<float> &curv, bool accum = false) {
-    if (g.times.size() < 2) return;
-    int last = (int)g.points.size() - 1;
-    Point prev = g.points[last-1] - g.points[last];
-    float acc = 0;
-    for (int i = last - 1; i >= 1; --i) {
-        Point next = g.points[i-1] - g.points[i];
-        acc = Bearing(prev, next) / M_PI / 2.f + (accum ? acc : 0);
-        curv.push_back(acc);
-        prev = next;
-    }
-}
-
-/*
-void DrawCurvature(Glyph &g, float time) {
-    if (g.times.size() < 2) return;
-    LineCon(0, .5, 1, .5);
-    Color(1,0,0);
-    Point prev = g.points[1] - g.points[0];
-    Point graphpt(0,.5);
-    for (int i = 2; i < g.times.size(); ++i) {
-        if (g.times[i] >= time) Color(0,1,0);
-        Point next = g.points[i] - g.points[i-1];
-        Point ngpt(g.times[i], .5f + Bearing(prev, next) / M_PI * .5f);
-        LineCon(graphpt, ngpt);
-        graphpt = ngpt;
-        prev = next;
-    }
-    Color(1,1,1);
-}
- */
 
 
 void PlotCurvature(Glyph &g, float time, bool integrate = true) {
@@ -250,16 +207,14 @@ void SimulateGlyph(Glyph &g, float totaltime = 1000.f, float extend = 1.5f) {
 
 void PlotGlyph(Glyph &g, float t) {
     Color(1,1,1);
-    for (int i = 0; i < g.times.size(); ++i) {
+    for (int i = 0; i < g.times.size(); ++i)
         if (g.times[i] < t) Circle(g.points[i], .001);
-    }
 }
 
 
 class Cluster {
 public:
     float GetDistance(Glyph &g, bool verbose = false) {
-        //verbose = true;
         if (verbose) cout << GetLabels() << ": ";
         float score = 0;
         vector<float> curv;
@@ -295,12 +250,62 @@ public:
         if (verbose) cout << "= " << score << endl;
         return score;
     }
+    float GetDistanceThreaded(Glyph &g, bool verbose = false) {
+        if (verbose) cout << GetLabels() << ": ";
+        int numfeat = 5;
+        float feats[5];
+        float weights[] = {10.f, 10.f, 4.f, 4.f, 15.f};
+        //float weights[] = {1.,1.,1.,1.,1.};
+        thread threads[5];
+        
+        threads[0] = thread([this, &g] (float *dump) {
+            vector<float> curv;
+            GetCurvature(g, curv);
+            *dump = LeastCostFloat(curv, cf, 1.0f, false);
+        }, feats + 0);
+        
+        threads[1] = thread([this, &g] (float *dump) {
+            vector<float> curv;
+            GetCurvReverse(g, curv);
+            *dump = LeastCostFloat(curv, cr, 1.0f, false);
+        }, feats + 1);
+        
+        threads[2] = thread([this, &g] (float *dump) {
+            vector<float> curv;
+            GetCurvature(g, curv, true);
+            *dump = LeastCostFloat(curv, cif, 1.0f, false);
+        }, feats + 2);
+        
+        threads[3] = thread([this, &g] (float *dump) {
+            vector<float> curv;
+            GetCurvReverse(g, curv, true);
+            *dump = LeastCostFloat(curv, cir, 1.0f, false);
+        }, feats + 3);
+        
+        threads[4] = thread([this, &g] (float *dump) {
+            *dump = LeastCost<Point>(g.points, average.points,
+                                [] (const Point &a, const Point &b)
+                                { return LengthSq(a - b); }, 1.0f, false);
+        }, feats + 4);
+        
+        for (int i = 0; i < numfeat; ++i)
+            threads[i].join();
+        
+        float score = 0;
+        for (int i = 0; i < numfeat; ++i) {
+            float curr = weights[i] * feats[i];
+            score += curr;
+            if (verbose) cout << curr << " ";
+        }
+        if (verbose) cout << "= " << score << endl;
+        return score;
+    }
     void Insert(Glyph &g, char label) {
         glyphs.push_back(g);
         labels += label;
         composite.points.insert(composite.points.end(), g.points.begin(), g.points.end());
         composite.times.insert(composite.times.end(), g.times.begin(), g.times.end());
-        average = ReduceGlyph(composite, NRES, .01);
+        average = ReduceGlyph(composite, NRES, STDEV);
         cf.clear(); cr.clear(); cif.clear(); cir.clear();
         GetCurvature(average, cf, false);
         GetCurvReverse(average, cr, false);
@@ -313,6 +318,19 @@ public:
     float AverageScore() {
         float ret = 0;
         for (Glyph &g : glyphs) ret += GetDistance(g);
+        return ret / glyphs.size();
+    }
+    float AverageScoreThreaded() {
+        float ret = 0;
+        mutex retLock;
+        vector<thread> threads;
+        for (Glyph &g : glyphs)
+            threads.push_back(thread([&ret, &retLock, &g, this] () {
+                float val = GetDistanceThreaded(g);
+                lock_guard<mutex> lg(retLock);
+                ret += val;
+            }));
+        for (thread &t : threads) t.join();
         return ret / glyphs.size();
     }
     char GetLabel() {
@@ -328,21 +346,20 @@ public:
     vector<Glyph> glyphs;
     string labels;
 };
-static vector<Cluster> clusters;
 
+static vector<Cluster> clusters;
 
 void ReadData(string filename, map<char, vector<Glyph>> &data) {
     string path = wdir + filename;
     ifstream infile(path);
     string dummy;
-    int nexamples;
-    infile >> dummy >> nexamples;
-    cout << "Reading in " << nexamples << " data examples" << endl;
-    for (int i = 0; i < nexamples; ++i) {
+    int nexamples = 0;
+    while (true) {
         TrainEx curr;
         int npoints;
         infile >> dummy >> curr.label >> dummy >> npoints;
-        cout << "Label " << curr.label << " with " << npoints << " points" << endl;
+        if (infile.eof()) break;
+        cout << "Read in label " << curr.label << " with " << npoints << " points" << endl;
         infile >> dummy >> curr.g.width >> dummy >> curr.g.duration;
         infile >> dummy >> curr.g.centroid[0] >> curr.g.centroid[1];
         for (int j = 0; j < npoints; ++j) {
@@ -353,83 +370,29 @@ void ReadData(string filename, map<char, vector<Glyph>> &data) {
             curr.g.points.push_back(p);
         }
         data[curr.label].push_back(curr.g);
+        ++nexamples;
     }
+    cout << "Read in " << nexamples << " total examples. " << endl;
 }
 
-/*
-void ReadProcessData(string filename, map<char, vector<Glyph>> &data) {
-    string path = wdir + filename;
-    ifstream infile(path);
-    string dummy;
-    int nexamples;
-    infile >> dummy >> nexamples;
-    cout << "Reading in " << nexamples << " data examples" << endl;
-    for (int i = 0; i < nexamples; ++i) {
-        TrainEx curr;
-        int npoints;
-        infile >> dummy >> curr.label >> dummy >> npoints;
-        cout << "Label " << curr.label << " with " << npoints << " points" << endl;
-        infile >> dummy >> curr.g.width >> dummy >> curr.g.duration;
-        infile >> dummy >> curr.g.centroid[0] >> curr.g.centroid[1];
-        for (int j = 0; j < npoints; ++j) {
-            float t;
-            Point p;
-            infile >> t >> p[0] >> p[1];
-            curr.g.times.push_back(t);
-            curr.g.points.push_back(p);
-        }
-        
-        Glyph actual = InterpGlyph(curr.g, 500);
-        actual = ReduceGlyph(actual, 100, .01);
-        data[curr.label].push_back(actual);
-        Cluster *best = nullptr;
-        float score = INFINITY;
-        for (Cluster &c : clusters) {
-            if (c.GetLabels()[0] != curr.label) continue;
-            float sc = c.GetDistance(actual);
-            if (sc < score) {
-                best = &c;
-                score = sc;
-            }
-        }
-        if (score > 80) {
-            if (best)
-                cout << "Best cluster was " << best->GetLabels() << ", score " << score << endl;
-            clusters.push_back(Cluster());
-            best = &clusters.back();
-            cout << "New cluster. ";
-        }
-        cout << "Adding a \'" << curr.label << "\' to cluster " << best->GetLabels() << endl;
-        best->Insert(actual, curr.label);
-        //data[curr.label].push_back(SmoothGlyph(curr.g, 1000, 100, .05));
-    }
-    
-    for (int i = 0; i < clusters.size(); ++i) {
-        if (clusters[i].glyphs.size() == 1) clusters.erase(clusters.begin() + i--);
-    }
-    
-}
-*/
-
-void CreateClusters() {
+void CreateClusters(bool threaded = false) {
     clusters.clear();
     for (auto &p : glyphs) {
         char label = p.first;
         vector<Glyph> &vec = p.second;
         for (Glyph &g : vec) {
-            Glyph smoothed = InterpGlyph(g, 500);
-            smoothed = ReduceGlyph(smoothed, 100, .01);
+            Glyph smoothed = SmoothGlyph(g, UPSCALE, NRES, STDEV);
             Cluster *best = nullptr;
             float score = INFINITY;
             for (Cluster &c : clusters) {
                 if (c.GetLabels()[0] != label) continue;
-                float sc = c.GetDistance(smoothed);
+                float sc = threaded ? c.GetDistanceThreaded(smoothed) : c.GetDistance(smoothed);
                 if (sc < score) {
                     best = &c;
                     score = sc;
                 }
             }
-            if (score > 80) {
+            if (score > 30) {
                 if (best)
                     cout << "Best cluster was " << best->GetLabels() << ", score " << score << endl;
                 clusters.push_back(Cluster());
@@ -440,36 +403,35 @@ void CreateClusters() {
             best->Insert(smoothed, label);
         }
     }
+    /*
+    auto iter = clusters.begin();
     for (int i = 0; i < clusters.size(); ++i) {
-        cout << "#" << i << " (" << clusters[i].AverageScore() << "): " << clusters[i].GetLabels() << endl;
+        if (clusters[i].glyphs.size() == 1) {
+            clusters.erase(iter);
+            i--;
+        } else iter++;
+    }
+     */
+    for (int i = 0; i < clusters.size(); ++i) {
+        cout << "#" << i << " (" << (threaded ? clusters[i].AverageScoreThreaded() : clusters[i].AverageScore())
+            << "): " << clusters[i].GetLabels() << endl;
     }
 }
 
-/*
-void PostPhiVals(vector<float> &phis, vector<int> &counts, int nres) {
-    int denom = 0;
-    phis.resize(nres*nres);
-    for (int &i : counts) denom += i;
-    for (int i = 0; i < nres * nres; ++i) {
-        phis[i] = log((float)counts[i]) - log((float)denom);
-        //cout << "putting in " << phis[i] << endl;
-    }
-}
- */
 
 static Point dumbpoint;
 
-void Analyze(bool verbose) { // LIEZ
-    if (currGlyph.points.size()) {
-        currGlyph.Normalize();
-        Glyph currInt = SmoothGlyph(currGlyph, 500, 100, .05);
+char Analyze(Glyph &g, bool verbose) {
+    if (g.points.size()) {
+        g.Normalize();
+        Glyph currInt = SmoothGlyph(g, UPSCALE, NRES, STDEV);
         dumbpoint = currInt.points[10]; // Debugging crap
         //cout << dumbpoint << endl;
-        currGlyph.Empty();
-        if (clusters.empty()) return;
+        g.Empty();
+        if (clusters.empty()) return 0;
         map<float, char> scores;
         for (Cluster &c : clusters) {
-            float curr = c.GetDistance(currInt, false);
+            float curr = c.GetDistanceThreaded(currInt, false);
             scores[curr] = c.GetLabels()[0];
         }
         if (verbose) {
@@ -481,18 +443,24 @@ void Analyze(bool verbose) { // LIEZ
             }
             cout << endl;
         }
-        else cout << scores.begin()->second;
-    }
+        return scores.begin()->second;
+        
+    } else return 0;
 }
 
 
-static char cOne, cTwo;
-static int coneIndex, ctwoIndex;
+static char cOne = 's', cTwo = 's';
+static int coneIndex = 11, ctwoIndex = 10;
 void ShowMe() {
     DrawClear();
-    LeastCostFloat(curvint[cOne][coneIndex], curvint[cTwo][ctwoIndex], 1.3f);
-    PlotCurvature(glyphs[cOne][coneIndex], 1, true);
-    PlotCurvature(glyphs[cTwo][ctwoIndex], 0, true);
+    vector<float> curv1, curv2;
+    Glyph g1 = SmoothGlyph(glyphs[cOne][coneIndex], 800, 200, .01);
+    Glyph g2 = SmoothGlyph(glyphs[cTwo][ctwoIndex], 800, 200, .01);
+    GetCurvature(g1, curv1, true);
+    GetCurvature(g2, curv2, true);
+    LeastCostFloat(curv1, curv2, 1.f);
+    PlotCurvature(g1, 1, true);
+    PlotCurvature(g2, 0, true);
     cout << "Displaying for " << cOne << " (" << coneIndex << ")"
     << " vs " << cTwo << " (" << ctwoIndex << ")" << endl;
     DrawSwap();
@@ -536,7 +504,6 @@ void DrawCompare(vector<float> &one, vector<float> &two, vector<pair<int,int>> &
 }
 
 static bool WaitingForChar = false;
-static int gindex = 0;
 void KeyCallback(unsigned char key, int x, int y) {
 
     UpdateMouse(x, y);
@@ -558,26 +525,68 @@ void KeyCallback(unsigned char key, int x, int y) {
             NewGlyph();
             break;
         case '\r':
-            Analyze(true);
+            Analyze(currGlyph, true);
             break;
         case '/':
-            Analyze(false);
+            cout << Analyze(currGlyph, false);
             break;
-        case 'f':
-            SimulateGlyph(glyphs[cOne][coneIndex], 2000, 1.4);
-            SimulateGlyph(glyphs[cTwo][ctwoIndex], 2000, 1.4);
+        case 'f': {
+            Glyph g1 = SmoothGlyph(glyphs[cOne][coneIndex], 800, 200, .01);
+            Glyph g2 = SmoothGlyph(glyphs[cTwo][ctwoIndex], 800, 200, .01);
+            SimulateGlyph(g1, 2000, 1.4);
+            SimulateGlyph(g2, 2000, 1.4);
+        }
             break;
         case 'd':
-            coneIndex = rng.GetInt(glyphs[cOne].size());
-            ctwoIndex = rng.GetInt(glyphs[cTwo].size());
+            coneIndex = rng.GetInt((int)glyphs[cOne].size());
+            ctwoIndex = rng.GetInt((int)glyphs[cTwo].size());
             ShowMeSpace();
             break;
         case 'q':
             exit(0);
             break;
-        case '4':
+        case 'c':
+            SeedStartTime();
             CreateClusters();
-            cout << "\n\n\n\n\n\n";
+            cout << "\nClustered in " << ElapsedMillis() * .001f << " sec\n\n\n\n\n";
+            break;
+        case 'v':
+            SeedStartTime();
+            CreateClusters(true);
+            cout << "\nClustered in " << ElapsedMillis() * .001f << " sec\n\n\n\n\n";
+            break;
+        case 'w': {
+            string filename = wdir + "screen.ppm";
+            WriteScreen(filename);
+        }
+            break;
+        case 'e': {
+            atomic<int> classified(0);
+            atomic<int> wrong(0);
+            atomic<int> threadsAlive;
+            vector<thread> threads;
+            mutex coutLock;
+            for (auto &p : glyphs) {
+                while (threadsAlive > 8) usleep(1000);
+                threads.push_back(thread([&classified, &wrong, &coutLock, &p, &threadsAlive] () {
+                    threadsAlive++;
+                    for (auto &g : p.second) {
+                        Glyph copy = g;
+                        char guess = Analyze(copy, false);
+                        if (guess != p.first) {
+                            ++wrong;
+                            lock_guard<mutex> lg(coutLock);
+                            cout << "Misclassified " << p.first << " as " << guess << endl;
+                        }
+                        ++classified;
+                    }
+                    threadsAlive--;
+                }));
+            }
+            for (thread &t : threads) t.join();
+            cout << "Accuracy was " << 1. - (float)wrong / classified << endl;
+            cout << " (ie " << wrong << " wrong out of " << classified << ")" << endl;
+        }
             break;
         case '5': {
             string inputfile;
@@ -586,11 +595,16 @@ void KeyCallback(unsigned char key, int x, int y) {
             ReadData(inputfile, glyphs);
             cout << "\n\n\n\n\n\n"; }
             break;
+            
         case 'x':
             currGlyph.Empty();
+            cout << "Cleared current glyph" << endl;
             DisplayCallback();
             break;
-            
+        case 'g':
+            glyphs.clear();
+            cout << "Cleared the map" << endl;
+            break;
         case 'r': {
             cout << "Which chars? " << endl;
             cin >> cOne >> cTwo;
@@ -599,40 +613,17 @@ void KeyCallback(unsigned char key, int x, int y) {
         }
             break;
         case 's': {
-            coneIndex = rng.GetInt(glyphs[cOne].size());
-            ctwoIndex = rng.GetInt(glyphs[cTwo].size());
+            coneIndex = rng.GetInt((int)glyphs[cOne].size());
+            ctwoIndex = rng.GetInt((int)glyphs[cTwo].size());
             ShowMe();
         }
+            break;
+        case 'a':
+            ShowMe();
             break;
         case '1':
             ReadData("data.dat", glyphs);
             break;
-            
-            /*
-        case '2': {
-            phivals.clear();
-            for (auto &p : glyphs) {
-                Glyph composite;
-                int nres = 64;
-                vector<int> curvs(nres * nres, 1);
-                for (Glyph &g : p.second) {
-                    composite.points.insert(composite.points.end(), g.points.begin(), g.points.end());
-                    composite.times.insert(composite.times.end(), g.times.begin(), g.times.end());
-                    DumpCurvatures(g, curvs, nres);
-                    curvint[p.first].push_back(vector<float>());
-                    GetCurvReverse(g, curvint[p.first].back());
-                }
-                PostPhiVals(phivals[p.first], curvs, nres);
-                cout << "Posting phis for " << p.first << endl;
-                Glyph reduced = ReduceGlyph(composite, 100, .05);
-                
-                //SimulateGlyph(reduced, 2000, 1.5);
-                //SimulateBigGlyph(composite, 3000, 1.5, curvs, nres);
-            }
-            cout << "Done posting phis" << endl;
-
-        }
-            break;*/
         case '3':    // DISPLAYS ALL CHARACTERS YOU'vE WRITTEN
             for (auto &p : glyphs) {
                 for (int i = 0; i < p.second.size(); ++i) {
@@ -671,7 +662,7 @@ void SpecialKeyUpCallback(int key, int x, int y) {
 // For live recognition, turned off.
 void IdleCallback() {
     if (timerValid && timer.Check()) {
-        Analyze(false);
+        cout << Analyze(currGlyph, false);
         DrawClear();
         DrawSwap();
     }

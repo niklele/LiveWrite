@@ -19,7 +19,3 @@
 *.aux
 *.log
 *.out
-
-# Pictures
-*.png
-*.ppm

@@ -604,26 +604,35 @@ template <class T>
 float LeastCost(vector<T> &a, vector<T> &b, function<float(const T&, const T&)> costfunc,
                 float dbias = 1.f, bool draw = true) {
     int n = (int)std::min(a.size(), b.size());
-    //cout << "n is " << n << endl << "Making cost mat" << endl;
+
     vector<float> costmat(n * n, 0);
     for (int j = 0; j < n; ++j)
         for (int i = 0; i < n; ++i)
             costmat[j * n + i] = costfunc(a[i], b[j]);
     
     vector<float> costs(n * n, 0);
-    //cout << "Dynprog the costs..." << endl;
+
     for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
             float cost = (!i && !j ? 0 : INFINITY);
-            if (i > 0) cost = min2f(cost, costs[j * n + (i-1)] * dbias);
-            if (j > 0) cost = min2f(cost, costs[(j-1) * n + i] * dbias);
-            if (i && j) cost = min2f(cost, costs[(j-1) * n + (i-1)]);
-            costs[j * n + i] = cost + costmat[j * n + i];
+            float multiplier = 1.f;
+            if (i > 0 && cost > costs[j * n + (i-1)]) {
+                cost = costs[j * n + (i-1)];
+                multiplier = dbias;
+            }
+            if (j > 0 && cost > costs[(j-1) * n + i]) {
+                cost = costs[(j-1) * n + i];
+                multiplier = dbias;
+            }
+            if (i && j && cost > costs[(j-1) * n + (i-1)]) {
+                cost = costs[(j-1) * n + (i-1)];
+                multiplier = 1.f;
+            }
+            costs[j * n + i] = cost + costmat[j * n + i] * multiplier;
         }
     }
-    //cout << "Posting result." << endl;
-    if (draw)
-        DrawCosts(costs, n);
+
+    if (draw) DrawCosts(costs, n);
     return costs[n * n - 1];
 }
 

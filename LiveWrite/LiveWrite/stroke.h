@@ -121,5 +121,39 @@ Glyph SmoothGlyph(Glyph &g, int supern, int reducen, float std) {
     return ret;
 }
 
+Glyph SmoothSpaceGlyph(Glyph &g, int supern, int reducen, float std) {
+    Glyph ret = InterpSpaceGlyph(g, supern);
+    ret = ReduceGlyph(ret, reducen, std);
+    ret.Normalize();
+    return ret;
+}
+
+
+void GetCurvature(Glyph &g, vector<float> &curv, bool accum = false) {
+    if (g.times.size() < 2) return;
+    Point prev = g.points[1] - g.points[0];
+    float acc = 0;
+    
+    for (int i = 2; i < g.times.size(); ++i) {
+        Point next = g.points[i] - g.points[i-1];
+        acc = Bearing(prev, next) / M_PI / 2.f + (accum ? acc : 0);
+        curv.push_back(acc);
+        prev = next;
+    }
+}
+
+void GetCurvReverse(Glyph &g, vector<float> &curv, bool accum = false) {
+    if (g.times.size() < 2) return;
+    int last = (int)g.points.size() - 1;
+    Point prev = g.points[last-1] - g.points[last];
+    float acc = 0;
+    for (int i = last - 1; i >= 1; --i) {
+        Point next = g.points[i-1] - g.points[i];
+        acc = Bearing(prev, next) / M_PI / 2.f + (accum ? acc : 0);
+        curv.push_back(acc);
+        prev = next;
+    }
+}
+
 
 #endif
