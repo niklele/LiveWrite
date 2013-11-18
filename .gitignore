@@ -23,3 +23,6 @@
 # Pictures
 *.png
 *.ppm
+
+# temporary files made by emacs/vim
+*~
