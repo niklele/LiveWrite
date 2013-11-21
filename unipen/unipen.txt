@@ -1,0 +1,6 @@
+UNIPEN data
+
+UNIPEN Paper: http://ieeexplore.ieee.org/xpl/articleDetails.jsp?tp=&arnumber=576870
+
+Data from http://www.unipen.org/products.html
+using unipen-CDROM-train_r01_v07.tgz
