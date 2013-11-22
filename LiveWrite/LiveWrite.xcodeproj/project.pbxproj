@@ -29,10 +29,16 @@
 /* Begin PBXFileReference section */
 		B58303761834B81D00842264 /* benlwmouse0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwmouse0.dat; sourceTree = "<group>"; };
 		B58303771835A01100842264 /* data.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = data.dat; sourceTree = "<group>"; };
+		B59FE9A4183B8364006F4726 /* vecdata0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata0.dat; sourceTree = "<group>"; };
+		B59FE9A5183B8364006F4726 /* vecdata1.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata1.dat; sourceTree = "<group>"; };
+		B59FE9A6183B85E6006F4726 /* vecdata2.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata2.dat; sourceTree = "<group>"; };
+		B59FE9A7183E0187006F4726 /* amywldrp.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = amywldrp.dat; sourceTree = "<group>"; };
 		B5A1E5CF1838348400FDBE04 /* benlwtrack0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwtrack0.dat; sourceTree = "<group>"; };
 		B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwmouse1.dat; sourceTree = "<group>"; };
 		B5A1E5D11839E54400FDBE04 /* sarahlwmouse0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = sarahlwmouse0.dat; sourceTree = "<group>"; };
 		B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = sarahtest0.dat; sourceTree = "<group>"; };
+		B5A1E5D3183B2AB800FDBE04 /* subcipher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = subcipher.h; path = ../subcipher.h; sourceTree = "<group>"; };
+		B5A1E5D4183B34B900FDBE04 /* vecdata.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata.dat; sourceTree = "<group>"; };
 		B5DFA4CE182D52BD0019B0C5 /* LiveWrite */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LiveWrite; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5DFA4D1182D52BD0019B0C5 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = LiveWrite.1; sourceTree = "<group>"; };
@@ -79,12 +85,18 @@
 				B58303761834B81D00842264 /* benlwmouse0.dat */,
 				B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */,
 				B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */,
+				B59FE9A7183E0187006F4726 /* amywldrp.dat */,
 				B5A1E5D11839E54400FDBE04 /* sarahlwmouse0.dat */,
+				B5A1E5D4183B34B900FDBE04 /* vecdata.dat */,
+				B59FE9A4183B8364006F4726 /* vecdata0.dat */,
+				B59FE9A5183B8364006F4726 /* vecdata1.dat */,
+				B59FE9A6183B85E6006F4726 /* vecdata2.dat */,
 				B5A1E5CF1838348400FDBE04 /* benlwtrack0.dat */,
 				B58303771835A01100842264 /* data.dat */,
 				B5DFA4D1182D52BD0019B0C5 /* main.cpp */,
 				B5DFA4DE182D54A70019B0C5 /* utilities.h */,
 				B5DFA4DF182D5A350019B0C5 /* stroke.h */,
+				B5A1E5D3183B2AB800FDBE04 /* subcipher.h */,
 				B5DFA4D3182D52BD0019B0C5 /* LiveWrite.1 */,
 			);
 			path = LiveWrite;
