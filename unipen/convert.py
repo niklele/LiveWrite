@@ -10,15 +10,15 @@ import re
 from pprint import pprint
 
 '''
-  1a/   isolated digits 
-  1b/   isolated upper case 
-  1c/   isolated lower case 
-  1d/   isolated symbols (punctuations etc.) 
-  2/    isolated characters, mixed case 
+  1a/   isolated digits
+  1b/   isolated upper case
+  1c/   isolated lower case
+  1d/   isolated symbols (punctuations etc.)
+  2/    isolated characters, mixed case
   3/    isolated characters in the context of words or texts
-  6/    isolated cursive or mixed-style words (without digits and symbols) 
-  7/    isolated words, any style, full character set 
-  8/    text: (minimally two words of) free text, full character set 
+  6/    isolated cursive or mixed-style words (without digits and symbols)
+  7/    isolated words, any style, full character set
+  8/    text: (minimally two words of) free text, full character set
 '''
 search_folder = "2/"
 
@@ -29,7 +29,7 @@ include_path = "CDROM/train_r01_v07/include/"
 # time increment = 1 / points per second
 T_INC = 0
 
-# Label: char
+# key: (label, segment_start)
 # value: [(t0 x0 y0) ... (tn xn yn)]
 data = {}
 
@@ -41,7 +41,7 @@ def read_data(segment_file):
 
     os.chdir(os.path.join(root, data_path))
 
-    # key = label, value = (start, end)
+    # key = (label, labelNum), value = (start, end)
     segments = {}
 
     include_file = read_segments(segment_file, segments)
@@ -68,6 +68,9 @@ def read_data(segment_file):
 
     # pprint(data)
 
+'''
+Add each stroke with time information to the data dict
+'''
 def add_data(stroke, t, label):
 
     print "add stroke for label {0}".format(label)
@@ -77,67 +80,6 @@ def add_data(stroke, t, label):
         data[label].append(val)
         t = t + T_INC
     return t
-
-'''
-def old_read(infile):
-
-    os.chdir(os.path.join(root, data_path))
-
-    include_file = ""
-    labels = []
-
-    # get label information
-    with open(infile, "r") as f:
-        for line in f:
-            line = line.strip()
-            if ".INCLUDE" in line:
-                include_file = line.split(" ")[1]
-            if ".SEGMENT" in line:
-                labels.append(line.split(" ")[-1][1:-1])
-
-    # build empty data dict
-    for l in labels:
-        data[l] = [0, []]
-
-    # read stroke data
-    i = -1
-    label = ""
-    t = -1
-    with open(os.path.join(root, include_path, include_file), "r") as f:
-
-        for line in f:
-            line = line.strip()
-
-            # find .START_BOX for each character in the data file
-            if ".START_BOX" in line:
-
-                # count numpoints for this symbol
-                if i != -1:
-                    numpoints = len(data[label][1])
-                    data[label][0] = numpoints
-
-                # start new symbol
-                t = 0
-                i = i + 1
-
-                # stop when we're out of labels
-                if i == len(labels):
-                    break
-
-                label = labels[i]
-
-            # ignore first lines, .PEN_UP and .PEN_DOWN
-            elif i != -1 and ".PEN" not in line:
-
-                x, y = line.split(" ")
-                val = (t, x, y)
-
-                data[label][1].append(val)
-                t = t + T_INC
-
-    # import pprint
-    pprint.pprint(data)
-'''
 
 '''
 Read segment information to later match labels to stroke data
@@ -153,12 +95,13 @@ def read_segments(segment_file, segments):
 
             if ".SEGMENT" in line:
                 # eg .SEGMENT CHARACTER 73 ? "1" 
-                keyword, seg_, delineation, quality, label = line.split(" ")
+                keyword, seg_type, delineation, quality, label = line.split(" ")
                 
                 label = label[1:-1] # remove ""
                 delineation = delineation.split("-")
 
-                segments[label] = (delineation[0], delineation[-1])
+                key = (label, delineation[0])
+                segments[key] = (delineation[0], delineation[-1])
 
     return include_file
 
@@ -205,7 +148,7 @@ def write_data(outfile):
 
         for label in data.keys():
 
-            f.write("Label: {0}\n".format(label))
+            f.write("Label: {0}\n".format(label[0]))
 
             time_series = data[label]
             f.write("Points: {0}\n".format(len(time_series)))
