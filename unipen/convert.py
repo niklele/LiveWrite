@@ -10,20 +10,21 @@ import re
 from pprint import pprint
 
 '''
-  1a/   isolated digits
-  1b/   isolated upper case
-  1c/   isolated lower case
-  1d/   isolated symbols (punctuations etc.)
-  2/    isolated characters, mixed case
-  3/    isolated characters in the context of words or texts
-  6/    isolated cursive or mixed-style words (without digits and symbols)
-  7/    isolated words, any style, full character set
-  8/    text: (minimally two words of) free text, full character set
+1a/   isolated digits
+1b/   isolated upper case
+1c/   isolated lower case
+1d/   isolated symbols (punctuations etc.)
+2/    isolated characters, mixed case
+3/    isolated characters in the context of words or texts
+6/    isolated cursive or mixed-style words (without digits and symbols)
+7/    isolated words, any style, full character set
+8/    text: (minimally two words of) free text, full character set
 '''
-search_folder = "2/"
+
+data_category = "2"
 
 root = os.path.abspath(".")
-data_path = os.path.join("CDROM/train_r01_v07/data/", search_folder)
+data_path = os.path.join("CDROM/train_r01_v07/data/", data_category)
 include_path = "CDROM/train_r01_v07/include/"
 
 # time increment = 1 / points per second
@@ -39,8 +40,6 @@ and matching labels to timeseries data
 '''
 def read_data(segment_file):
 
-    os.chdir(os.path.join(root, data_path))
-
     # key = (label, labelNum), value = (start, end)
     segments = {}
 
@@ -49,6 +48,8 @@ def read_data(segment_file):
     # build empty data dict
     for label in segments.keys():
         data[label] = []
+
+    print "reading strokes for {0} in {1}".format(segment_file, include_file)
 
     strokes = read_strokes(include_file)
 
@@ -73,7 +74,7 @@ Add each stroke with time information to the data dict
 '''
 def add_data(stroke, t, label):
 
-    print "add stroke for label {0}".format(label)
+    # print "add stroke for label {0}".format(label[0])
 
     for x, y in stroke: # [ (x0,y0) .. (xn,yn) ]
         val = (t, x, y)
@@ -103,6 +104,8 @@ def read_segments(segment_file, segments):
                 key = (label, delineation[0])
                 segments[key] = (delineation[0], delineation[-1])
 
+                # TODO add colon indexing into delineation
+
     return include_file
 
 '''
@@ -110,8 +113,6 @@ Build an array of all strokes written
 strokes[i][j] is for stroke i: (xj, yj) NOTE: no time
 '''
 def read_strokes(include_file):
-
-    print "reading all strokes"
 
     strokes = []
     i = -1
@@ -140,9 +141,7 @@ Write data dict to file according to our format
 '''
 def write_data(outfile):
 
-    os.chdir(os.path.join(root))
-
-    print "writing to " + outfile
+    print "writing data to {0}".format(outfile)
 
     with open(outfile, "w") as f:
 
@@ -162,12 +161,23 @@ def write_data(outfile):
 if __name__ == '__main__':
 
     if (len(sys.argv) < 4):
-        print "usage: convert.py infile outfile PPS"
+        print '''usage: convert.py test_folder data_category PPS out_folder \n
+                eg. convert.py aga 2 100 aga-converted '''
 
     else:
-        infile = sys.argv[1]
-        outfile = sys.argv[2]
+        test_folder = sys.argv[1]
+        data_category = sys.argv[2]
         T_INC = 1 / float(sys.argv[3])
+        out_folder = sys.argv[4]
 
-        read_data(infile)
-        write_data(outfile)
+        if not os.path.exists(out_folder):
+            os.makedirs(out_folder)
+
+        files = os.listdir(os.path.join(root, data_path, test_folder))
+
+        for f in files:
+            if f.endswith(".dat"):
+                os.chdir(os.path.join(root, data_path, test_folder))
+                read_data(f)
+                os.chdir(os.path.join(root, out_folder))
+                write_data(f)
