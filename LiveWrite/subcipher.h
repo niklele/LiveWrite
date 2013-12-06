@@ -142,7 +142,7 @@ void RandomSwap(vector<int> &vals) {
 }
 
 float NGramScore(map<string, int> &ngrams, vector<string> &input) {
-    int n = ngrams.begin()->first.length();
+    int n = (int)(ngrams.begin()->first.length());
     float score = 0.f;
     for (string &s : input)
         for (int i = 0; i < s.size() - n; ++i)
@@ -223,45 +223,5 @@ void ReadCorpus(string filename, map<string, int> &freqs) {
     cout << "Successfully read in file " << filename.c_str() << endl;
 }
 
-
-
-/*
-int main(int argc, const char *argv[])
-{
-    int n = 3;
-    srand (time(NULL));
-    vector<string> input;
-    for (int i = 2; i < argc; ++i)
-        input.push_back(string(argv[i]));
-    for (string &s : input)
-        for (char &c : s)
-            if (c >= 'A' && c <= 'Z')
-                c += 'z' - 'Z';
-    
-    
-    FILE *fp = fopen(argv[1], "r");
-    if (!fp) {
-    	printf("Cannot open file \"%s\"\n", argv[1]);
-    	return 0;
-    }
-    map<string, int> freqs;
-    FillInCorpus(fp, freqs);
-    fclose(fp);
-    cout << "Found " << freqs.size() << " words" << endl;
-    cout << "tried: " << freqs["tried"] << endl;
-    
-    int total = 0;
-    for (auto &p : freqs) total += p.second;
-    cout << "Found " << total << " entries" << endl;
-    map<string, int> ngrams;
-    GetNGrams(freqs, ngrams, n);
-    
-    for (string &s : input) cout << s << " ";
-    cout << endl;
-    
-    RunInference(50, 5000, freqs, ngrams, input, n);
-    return 0;
-}
-*/
 
 #endif

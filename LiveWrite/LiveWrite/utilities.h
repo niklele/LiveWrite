@@ -26,7 +26,7 @@
 
 using namespace std;
 
-static int width = 600;
+static int width = 800;
 static int height = width;
 const static float EPSILON = .000001f;
 
@@ -128,7 +128,7 @@ inline float Dist2d(float a[2], float b[2]) {
 void WriteStr(const char *mystr, float x = 0, float y = 0) {
     glRasterPos2f(x, y);
     for (int i = 0; mystr[i]; i++)
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, mystr[i]);
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, mystr[i]);
 }
 
 void WriteStrSm(const char *mystr, float x = 0, float y = 0) {
@@ -347,6 +347,9 @@ public:
     float data[2];
 };
 
+Point DirPt(float theta) {
+    return Point(cos(theta), sin(theta));
+}
 
 bool OnScreen(Point p, float eps = 0) {
     return OnScreen(p.data, eps);
@@ -388,6 +391,19 @@ inline float Bearing(const Point &u, const Point &v) {
         return M_PI - asin(pSin(u,v));
     }
 }
+
+inline float Angle(const Point &p) {
+    float l = Length(p);
+    if (!l) return 0;
+    Point norm = p / l;
+    float tc = acosf(norm[0]), ts = asinf(norm[1]);
+    return ts >= 0 ? tc : 2.f * M_PI - tc;
+}
+
+inline pair<float, float> RTheta(const Point &p) {
+    return { Length(p), Angle(p) };
+}
+
 
 Point RandDir(Point dir, float scale = 1.f) {
     Point ret(rng.GetNudge(), rng.GetNudge());
@@ -445,6 +461,16 @@ int DragOnScreen(Point &p) {
         float &n = p[i];
         if (n < 0) { n = 0; ret++; }
         if (n > 1) { n = 1; ret++; }
+    }
+    return ret;
+}
+
+int DragOnScreen(Point &p, float buffer) {
+    int ret = 0;
+    for (int i = 0; i < 2; i++) {
+        float &n = p[i];
+        if (n < buffer) { n = buffer; ret++; }
+        if (n > 1 - buffer) { n = 1 - buffer; ret++; }
     }
     return ret;
 }
@@ -560,6 +586,10 @@ void WriteStr(char *s, const Point &p) {
     WriteStr(s, p[0], p[1]);
 }
 
+void WriteStr(string s, const Point &p) {
+    WriteStr(s, p[0], p[1]);
+}
+
 float ExtractFloat(string s) {
     stringstream ss;
     float ret;
@@ -598,6 +628,30 @@ void DrawCosts(vector<float> &costs, int m, int n) {
         Color(col,col,col);
         DrawBox((float)(x % m) / m, (float)(x / m) / n, 1.f / m, 1.f / n);
     }
+}
+
+float LCP(vector<float> costmat, int n, float dbias = 1.f) {
+    vector<float> costs(n * n, 0);
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            float cost = (!i && !j ? 0 : INFINITY);
+            float multiplier = 1.f;
+            if (i > 0 && cost > costs[j * n + (i-1)]) {
+                cost = costs[j * n + (i-1)];
+                multiplier = dbias;
+            }
+            if (j > 0 && cost > costs[(j-1) * n + i]) {
+                cost = costs[(j-1) * n + i];
+                multiplier = dbias;
+            }
+            if (i && j && cost > costs[(j-1) * n + (i-1)]) {
+                cost = costs[(j-1) * n + (i-1)];
+                multiplier = 1.f;
+            }
+            costs[j * n + i] = cost + costmat[j * n + i] * multiplier;
+        }
+    }
+    return costs[n * n - 1];
 }
 
 template <class T>
@@ -708,4 +762,46 @@ float LeastCostFloatInside(vector<float> &a, vector<float> &b,
                                   indices, dbias, draw );
 }
 
+float vecmax(const vector<float> &v) {
+    float r = -INFINITY;
+    for (float f : v)
+        if (f > r)
+            r = f;
+    return r;
+}
+
+void DrawMatrix(vector<float> &vals, int n, float max) {
+    for (int x = 0; x < n * n; ++x) {
+        float col = vals[x] / max;
+        Color(col,col,col);
+        DrawBox((float)(x % n) / n, (float)(x / n) / n, 1.f / n, 1.f / n);
+    }
+}
+
+void DrawMatrix(vector<float> &vals, int m, int n, float max) {
+    for (int x = 0; x < m * n; ++x) {
+        float col = vals[x] / max;
+        Color(col,col,col);
+        DrawBox((float)(x % m) / m, (float)(x / m) / n, 1.f / m, 1.f / n);
+    }
+}
+
+
+
+ostream &operator<<(ostream &os, const vector<int> &v) {
+    os << "(";
+    for (int i = 0; i < v.size() - 1; ++i)
+        os << v[i] << ", ";
+    os << v.back() << ")";
+    return os;
+}
+ostream &operator<<(ostream &os, const vector<float> &v) {
+    os << "(";
+    for (int i = 0; i < v.size() - 1; ++i)
+        os << v[i] << ", ";
+    os << v.back() << ")";
+    return os;
+}
+
 #endif
+

@@ -12,6 +12,8 @@
 #include <map>
 #include <unistd.h>
 #include "subcipher.h"
+#include "shapecontext.h"
+#include "graph.h"
 
 
 static float mouseX, mouseY;
@@ -22,22 +24,22 @@ const static int UPSCALE = 500;
 
 void DisplayCallback();
 
-float checker = 1.f;
+
 struct TrainEx {
     Glyph g;
     char label;
 };
-static char currlabel = 'A';
+static char currlabel = 'a';
 static map<char, vector<Glyph>> glyphs;
 static vector<Glyph> glyphVec;
 static Glyph currGlyph;
-static map<char, vector<float>> phivals;
-static map<char, vector<vector<float>>> curvint;
 
-static int mousecount = 0;
+static string wdir;
 void Init() {
-    mousecount = 0;
     SeedStartTime();
+    wdir = string(__FILE__);
+    wdir = wdir.substr(0, wdir.find("main.cpp"));
+    cout << "Working directory for files is: " << endl << wdir << endl;
 }
 
 void UpdateMouse(int x, int y) {
@@ -52,11 +54,15 @@ Point MouseDelta(int x, int y) {
     return Point(xn - mouseX, yn - mouseY);
 }
 
-
-static unsigned char micePix[700 * 700 * 3];
 char Analyze(Glyph &g, bool verbose = false);
+
+const static int gwidth = 8, gheight = 6;
+static int gridentry = 0;
+void CheckGrid();
+
 static Timer timer;
 static bool timerValid = false;
+int lastbox = -1;
 void MouseCallback(int button, int state, int x, int y) {
     //button = GLUT_LEFT_BUTTON, GLUT_MIDDLE_BUTTON, or GLUT_RIGHT_BUTTON
     //state = GLUT_UP or GLUT_DOWN
@@ -67,10 +73,12 @@ void MouseCallback(int button, int state, int x, int y) {
         //timerValid = true;
     }
     if (state == GLUT_DOWN) {
+        CheckGrid();
         currGlyph.AddPoint(mouse, ElapsedMillis());
         currGlyph.MouseDown();
         timerValid = false;
     }
+    DisplayCallback();
 }
 
 
@@ -99,7 +107,6 @@ void NewGlyph() {
     }
 }
 
-const static string wdir = "/Users/ben/Documents/projects/LiveWrite/LiveWrite/LiveWrite/";
 void WriteData(string filename, map<char, vector<Glyph>> &data) {
     string path = wdir + filename;
     ofstream outfile(path);
@@ -161,6 +168,12 @@ void PlotCurvature(Glyph &g, float time, bool integrate = true) {
         
     }
     Color(1,1,1);
+}
+
+void PlotVector(vector<float> vals, float bound) {
+    LineCon(0,.5f,1,.5f);
+    for (int i = 0; i < vals.size(); ++i)
+        Circle((float)i / vals.size(), .5f + .5f * vals[i] / bound, .003);
 }
 
 // Makes histogram of curvatures for Naive Bayes
@@ -228,6 +241,35 @@ void PlotGlyph(Glyph &g, float t) {
         if (g.times[i] < t) Circle(g.points[i], .001);
 }
 
+
+
+float ShapeDistance(Glyph &a, Glyph &b, vector<float> &f) {
+    if (a.points.empty() || b.points.empty()) return 0;
+    ShapeContext s(a), t(b);
+    f.push_back(1.f);
+    f.push_back(compare(s, t, 5, 12));
+    
+    /*
+    Glyph aa = SmoothGlyph(a, 500, 100, .01);
+    Glyph bb = SmoothGlyph(b, 500, 100, .01);
+    f.push_back(LeastCost<Point>(aa.points, bb.points,
+                                 [] (const Point &a, const Point &b)
+                                 { return LengthSq(a - b); }, 1.0f, false));
+    
+    aa = SmoothSpaceGlyph(a, 500, 100, .01);
+    bb = SmoothSpaceGlyph(b, 500, 100, .01);
+    f.push_back(LeastCost<Point>(aa.points, bb.points,
+                                 [] (const Point &a, const Point &b)
+                                 { return LengthSq(a - b); }, 1.0f, false));
+    */
+    //return f[1] + .44f * f[2] + .29f * f[3];
+    return f[1];
+}
+
+float ShapeDistance(Glyph &a, Glyph &b) {
+    vector<float> dummy;
+    return ShapeDistance(a, b, dummy);
+}
 
 class Cluster {
 public:
@@ -316,6 +358,12 @@ public:
         }
         if (verbose) cout << "= " << score << endl;
         return score;
+    }
+    float GetShapeContextDiff(Glyph &g) {
+        //return ShapeDistance(average, g);
+        ShapeContext me(average);
+        ShapeContext them(g);
+        return compare(me, them, 5, 12);
     }
     void Recalculate() {
         average = ReduceGlyph(composite, NRES, STDEV);
@@ -432,7 +480,7 @@ void ReadDataSimple(string filename, map<char, vector<Glyph>> &data) {
 }
 
 void ReadVectorData(string filename = "vecdata.dat") {
-    glyphVec.clear();
+    if (!glyphVec.empty()) glyphVec.push_back(Glyph());
     string path = wdir + filename;
     ifstream infile(path);
     string dummy;
@@ -519,7 +567,7 @@ void CreateClusters2() {
                     score = sc;
                 }
             }
-            if (score > 100) {
+            if (score > 30) {
                 if (best)
                     cout << "Best cluster was " << best->GetLabels() << ", score " << score << endl;
                 clusters.push_back(Cluster());
@@ -545,57 +593,64 @@ void CreateClusters2() {
     }
 }
 
-/*
-void KMeans(vector<Glyph> &glyphs, vector<Cluster> &clusters, int iters, int numClusters) {
-    if (glyphs.size() < numClusters) {
-        cout << "Can't have more clusters than data points " << endl;
-        return;
-    }
+void CreateClusters3() {
     clusters.clear();
-    for (int i = 0; i < numClusters; ++i) {
-        clusters.push_back(Cluster());
-        clusters.back().Insert(glyphs[i], i);
-    }
-    for (int iter = 0; iter < iters; ++iter) {
-        vector<int> clusterInds(glyphs.size());
-        for (int gi = 0; gi < glyphs.size(); ++gi) {
-            Glyph &g = glyphs[gi];
+    for (auto &p : glyphs) {
+        char label = p.first;
+        vector<Glyph> &vec = p.second;
+        for (Glyph &g : vec) {
             Glyph smoothed = SmoothGlyph(g, UPSCALE, NRES, STDEV);
+            Cluster *best = nullptr;
             float score = INFINITY;
-            for (int ci = 0; ci < clusters.size(); ++ci) {
-                float sc = clusters[ci].GetDistanceThreaded(smoothed);
+            for (Cluster &c : clusters) {
+                if (c.GetLabels()[0] != label) continue;
+                float sc = c.GetShapeContextDiff(smoothed);
                 if (sc < score) {
+                    best = &c;
                     score = sc;
-                    clusterInds[gi] = ci;
                 }
             }
-        }
-        for (int ci = 0; ci < clusters.size(); ++ci) {
-            clusters[ci].Clear();
-            for (int gi = 0; gi < glyphs.size(); ++gi) {
-                if (clusterInds[gi] == ci)
-                    clusters[ci].Insert(glyphs[gi], 0, false);
+            if (score > 15) {
+                if (best)
+                    cout << "Best cluster was " << best->GetLabels() << ", score " << score << endl;
+                clusters.push_back(Cluster());
+                best = &clusters.back();
+                cout << "New cluster. ";
             }
+            cout << "Adding a \'" << label << "\' to cluster " << best->GetLabels();
+            cout << " (score " << score << ")" << endl;
+            best->Insert(g, label);
         }
     }
+    auto iter = clusters.begin();
+    for (int i = 0; i < clusters.size(); ++i) {
+        if (clusters[i].glyphs.size() == 1) {
+            clusters.erase(iter);
+            i--;
+        } else iter++;
+    }
+    for (int i = 0; i < clusters.size(); ++i) {
+        cout << "#" << i << " (" << clusters[i].AverageScoreThreaded()
+        << "): " << clusters[i].GetLabels() << endl;
+    }
 }
-*/
+
 
 static Point dumbpoint;
-
 char Analyze(Glyph &g, bool verbose) {
     if (g.points.size()) {
         g.Normalize();
         dumbpoint = g.points[10]; // Debugging crap
         Glyph currInt = SmoothGlyph(g, UPSCALE, NRES, STDEV);
         dumbpoint = currInt.points[10]; // Debugging crap
-        cout << dumbpoint;
+        cout << dumbpoint << endl;
         g.Empty();
         if (clusters.empty()) return 0;
-        map<float, char> scores;
+        map<float, string> scores;
         for (Cluster &c : clusters) {
-            float curr = c.GetDistanceThreaded(currInt, false);
-            scores[curr] = c.GetLabels()[0];
+            //float curr = c.GetDistanceThreaded(currInt, false);
+            float curr = c.GetShapeContextDiff(currInt);
+            scores[curr] = c.GetLabels();
         }
         if (verbose) {
             auto iter = scores.begin();
@@ -607,7 +662,7 @@ char Analyze(Glyph &g, bool verbose) {
             cout << endl;
         }
         cout << " score is " << scores.begin()->first << ", char " << scores.begin()->second << endl;
-        return scores.begin()->second;
+        return scores.begin()->second[0];
         
     } else return 0;
 }
@@ -641,6 +696,7 @@ void CalculateError() {
 static char cOne = 's', cTwo = 's';
 static int coneIndex = 11, ctwoIndex = 10;
 void ShowMe() {
+    /*
     DrawClear();
     vector<float> curv1, curv2;
     Glyph g1 = SmoothGlyph(glyphs[cOne][coneIndex], 800, 200, .01);
@@ -650,6 +706,28 @@ void ShowMe() {
     LeastCostFloat(curv1, curv2, 1.f);
     PlotCurvature(g1, 1, true);
     PlotCurvature(g2, 0, true);
+    cout << "Displaying for " << cOne << " (" << coneIndex << ")"
+    << " vs " << cTwo << " (" << ctwoIndex << ")" << endl;
+    DrawSwap();
+     */
+    DrawClear();
+    const float velbound = 20.f;
+    vector<float> vel1, vel2;
+    Glyph g1 = SmoothGlyph(glyphs[cOne][coneIndex], 800, 200, .01);
+    Glyph g2 = SmoothGlyph(glyphs[cTwo][ctwoIndex], 800, 200, .01);
+    GetStrokeSpeeds(g1, vel1);
+    GetStrokeSpeeds(g2, vel2);
+    cout << vel1 << endl;
+    cout << vel2 << endl;
+    cout << *max_element(vel1.begin(), vel1.end()) << " for 1, ";
+    cout << *max_element(vel2.begin(), vel2.end()) << " for 2" << endl;
+    float lcp = LeastCostFloat(vel1, vel2, 1.f);
+    float sd = SquareDif(vel1, vel2);
+    cout << "Square dif is " << sd << ", ratio " << sd / lcp << endl;
+    Color(1,0,0);
+    PlotVector(vel1, velbound);
+    Color(0,1,0);
+    PlotVector(vel2, velbound);
     cout << "Displaying for " << cOne << " (" << coneIndex << ")"
     << " vs " << cTwo << " (" << ctwoIndex << ")" << endl;
     DrawSwap();
@@ -689,14 +767,6 @@ void DrawCompare(vector<float> &one, vector<float> &two, vector<pair<int,int>> &
         }
         DrawSwap();
         usleep(10000);
-    }
-}
-
-void DrawMatrix(vector<float> &vals, int n, float max) {
-    for (int x = 0; x < n * n; ++x) {
-        float col = vals[x] / max;
-        Color(col,col,col);
-        DrawBox((float)(x % n) / n, (float)(x / n) / n, 1.f / n, 1.f / n);
     }
 }
 
@@ -776,7 +846,7 @@ inline float Sigmoid(float z) { return 1.f / (1.f + expf(-z)); }
 void LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 10000) {
     float alpha = .01f;
     int m = (int)X.size();
-    cout << X[100][3] << endl;
+    cout << X[100][0] << endl;
     int n = (int)X[0].size();
     vector<float> theta(n, 0);
     cout << "Beginning logistic regression with n = " << n << ", m = " << m << endl;
@@ -789,10 +859,10 @@ void LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 
                 hyp += theta[j] * X[i][j];
             hyp = Sigmoid(hyp);
             
-            if (y[i]) alpha *= 100.f;
+            //if (y[i]) alpha *= 100.f;
             for (int j = 0; j < n; ++j)
                 newtheta[j] += alpha * (y[i] - hyp) * X[i][j];
-            if (y[i]) alpha /= 100.f;
+            //if (y[i]) alpha /= 100.f;
             
         }
         theta = newtheta;
@@ -813,43 +883,244 @@ void LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 
         hyp = (Sigmoid(hyp) >= .5f ? 1.f : 0.f);
         if (hyp != y[i])
             fails++;
-            //cout << "Failure on data point " << i << ", supposed to be " << y[i] << endl;
+            cout << "Failure on data point " << i << ", supposed to be " << y[i] << endl;
     }
     cout << "Fails on " << fails << " examples" << endl;
 }
 
-void SolveCipher() {
+    
+float ClusterMinDist(Cluster &c, Cluster &d) {
+    float min = INFINITY;
+    for (Glyph &g : c.glyphs) {
+        for (Glyph &h : d.glyphs) {
+            float curr = ShapeDistance(g, h);
+            if (curr < min) min = curr;
+        }
+    }
+    return min;
+}
+
+float ClusterVecMinDist(vector<Cluster> &cs, int i, int &j) {
+    float glow = INFINITY;
+    for (int k = 0; k < cs.size(); ++k) {
+        if (k == i) continue;
+        float curr = ClusterMinDist(cs[i], cs[k]);
+        if (curr < glow) {
+            glow = curr;
+            j = k;
+        }
+    }
+    return glow;
+}
+
+mutex cmLock;
+static const int NTHREADS = 6;
+static atomic<int> tofinish(NTHREADS);
+template <class T>
+void FillMatRange(vector<float> &cmat, vector<vector<T>> &timeseries,
+                  function<float(const T&, const T&)> compareT,
+                  int n, int start, int end) {
+    
+    for (int j = start; j < end; ++j) {
+        for (int i = j + 1; i < n; ++i) {
+            float val = LeastCost<T>(timeseries[i],
+                                    timeseries[j], compareT, 1.f, false);
+            lock_guard<mutex> lg(cmLock);
+            cmat[j * n + i] = val;
+        }
+    }
+    --tofinish;
+}
+
+void AnalyzeCostMat(vector<float> &costmat, string &labels) {
+    int n = (int)labels.size();
+    float smin = INFINITY, smax = -INFINITY;
+    int dmin = INFINITY, dmax = -INFINITY;
+    for (int ind = 0; ind < n * n; ++ind) {
+        int i = ind % n, j = ind / n;
+        if (i <= j) continue;
+        float c = costmat[ind];
+        if (labels[i] == labels[j]) {
+            if (smin > c) smin = c;
+            if (smax < c) smax = c;
+        } else {
+            if (dmin > c) dmin = c;
+            if (dmax < c) dmax = c;
+        }
+    }
+    cout << "Same range is " << smin << " to " << smax << endl;
+    cout << "Diff range is " << dmin << " to " << dmax << endl;
+    int sind = 0, dins = 0;
+    int sames = 0, diffs = 0;
+    for (int ind = 0; ind < n * n; ++ind) {
+        int i = ind % n, j = ind / n;
+        if (i <= j) continue;
+        float c = costmat[ind];
+        bool same = labels[i] == labels[j];
+        if (same) ++sames;
+        else ++diffs;
+        if (c <= smax && !same) ++dins;
+        if (c >= dmin && same) ++sind;
+    }
+    cout << "Found " << dins << " diffs in the \"same\" range, of " << diffs << " total diffs" << endl;
+    cout << "Found " << sind << " sames in the \"diff\" range, of " << sames << " total sames" << endl;
+    int miscat = 0;
+    for (int j = 0; j < n; ++j) {
+        float best = INFINITY;
+        char match;
+        for (int i = 0; i < n; ++i) {
+            if (j == i) continue;
+            if (costmat[j*n+i] < best) {
+                best = costmat[j*n+i];
+                match = labels[i];
+            }
+        }
+        if (match != labels[j]) ++miscat;
+    }
+    cout << "Miscat: " << miscat << ". As a fraction, " << (float)miscat / n / n << endl;
+}
+
+template <class T>
+void EvaluateFeature(function<void(Glyph&, vector<T>&)> getSeries,
+                     function<float(const T&, const T&)> compareT) {
+    vector<vector<T>> timeseries;
+    string labels = "";
+    cout << "Generating feature vectors" << endl;
+    for (auto &p : glyphs) {
+        for (Glyph &g : p.second) {
+            labels += p.first;
+            timeseries.push_back(vector<T>());
+            getSeries(g, timeseries.back());
+        }
+    }
+    
+    cout << "Generating cost matrices" << endl;
+    int n = (int)timeseries.size();
+    int L = (int)timeseries.front().size();
+    vector<float> costmatLCP(n * n);
+    vector<float> costmatDirect(n * n);
+    vector<thread> threads;
+    tofinish = NTHREADS;
+    for (int i = 0; i < NTHREADS; ++i) {
+        int start = n * (1.f - sqrtf((float)(NTHREADS - i) / NTHREADS));
+        int end = n * (1.f - sqrtf((float)(NTHREADS - i - 1) / NTHREADS));
+        threads.push_back(thread(FillMatRange<T>, ref(costmatLCP), ref(timeseries),
+                          compareT, n, start, end));
+    }
+    
+    while (tofinish) {
+        usleep(200 * 1000.f);
+        lock_guard<mutex> lg(cmLock);
+        DrawClear();
+        DrawMatrix(costmatLCP, n, *max_element(costmatLCP.begin(), costmatLCP.end()));
+        DrawSwap();
+    }
+    
+    for (thread &t : threads)
+        t.join();
+    
+    for (int j = 0; j < n; ++j) {
+        for (int i = 0; i < n; ++i) {
+            if (i < j) {
+                costmatLCP[j*n+i] = costmatLCP[i*n+j];
+                costmatDirect[j*n+i] = costmatDirect[i*n+j];
+            } else if (i == j) {
+                costmatLCP[j*n+i] = 0;
+                costmatDirect[j*n+i] = 0;
+            } else {
+                //costmatLCP[j*n+i] = LeastCost<T>(timeseries[i], timeseries[j], compareT, 1.f, false);
+                float dir = 0;
+                for (int k = 0; k < L; ++k)
+                    dir += compareT(timeseries[i][k], timeseries[j][k]);
+                costmatDirect[j*n+i] = dir;
+            }
+        }
+        DrawClear();
+        DrawMatrix(costmatLCP, n, *max_element(costmatLCP.begin(), costmatLCP.end()));
+        DrawSwap();
+    }
+    
+    DrawClear();
+    DrawMatrix(costmatDirect, n, *max_element(costmatDirect.begin(), costmatDirect.end()));
+    DrawSwap();
+    cout << "Analyzing direct comp" << endl;
+    AnalyzeCostMat(costmatDirect, labels);
+    cout << "Analyzing LCP comp" << endl;
+    AnalyzeCostMat(costmatLCP, labels);
+    cout << "Done evaluating!" << endl << endl;
+}
+
+void SolveCipher(string actual) {
+    cout << std::setprecision(3);
     
     vector<Cluster> localClusters;
     char currlabel = 'a';
     vector<string> cipher;
     cipher.push_back(string());
-    vector<Glyph> smoothed;
-    for (int i = 0; i < glyphVec.size(); ++i)
-        if (!glyphVec[i].points.empty())
-            smoothed.push_back(SmoothGlyph(glyphVec[i], 500, 100, .01));
     
-    int n = (int)smoothed.size();
+    //string actual = "something else in this song cannot be remembered";
+    //string actual = "the poison from a black widow spider is about fifteen times more potent";
+    //string actual = "he found himself transformed in his bed into a horrible vermin";
+    //actual = "the poison from a black widow spider is about fifteen times more potent he found himself transformed in his bed into a horrible vermin";
+    //actual = "toaster and leader of a group of appliances consisting of a radio lamp electric blanket and vacuum cleaner";
+    
+    vector<string> nospace;
+    for (char &c : actual)
+        if (c != ' ') {
+            string s = "";
+            s += c;
+            nospace.push_back(s);
+        }
+    vector<Edge> edges;
+    
+    vector<ShapeContext> contextVec;
+    for (Glyph &g : glyphVec)
+        contextVec.push_back(ShapeContext(g));
+    
+    int n = (int)glyphVec.size();
     vector<float> lcp(n * n, 0);
-    string actual = "thepoisonfromablackwidowspiderisaboutfifteentimesmorepotent";
     float highest = 0.f;
     vector<vector<float>> features;
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < n; ++i) {
+    for (int j = 0, jj = 0; j < n; ++j) {
+        for (int i = 0, ii = 0; i < n; ++i) {
             vector<float> feat;
-            lcp[j * n + i] = -GetGlyphDistance(smoothed[i], smoothed[j], feat);
-            features.push_back(feat);
+            lcp[j * n + i] = compare(contextVec[i], contextVec[j], 5, 12);
+            //ShapeDistance(glyphVec[i], glyphVec[j], feat);
+            //-GetGlyphDistance(smoothed[i], smoothed[j], feat);
+            if (!feat.empty())
+                features.push_back(feat);
             if (lcp[j * n + i] > highest) {
                 highest = lcp[j * n + i];
-                cout << i << " = " << actual[i] << ", " << j
-                    << " = " << actual[j] << ": " << lcp[j * n + i] << endl;
+                //cout << i << " = " << actual[i] << ", " << j
+                  //  << " = " << actual[j] << ": " << lcp[j * n + i] << endl;
             }
+            if ((lcp[j*n+i] && lcp[j*n+i] < 20) || actual[i] == actual[j])
+                cout << actual[i] << actual[j] << ' ' << lcp[j*n+i] << "  ";
+            
+            if (lcp[j*n+i] > 0) {
+                edges.push_back(Edge(ii, jj, lcp[j*n+i]));
+            }
+            if (actual[i] != ' ') ++ii;
         }
+        cout << endl;
         DrawClear();
         DrawMatrix(lcp, n, highest);
         HighlightMatches(actual);
         DrawSwap();
+        if (actual[j] != ' ') ++jj;
     }
+    
+    cout << "Edges has " << edges.size() << " edges. Tenth is " << edges[10].a;
+    cout << " " << edges[10].b << " " << edges[10].w << endl;
+    DrawClear();
+    cout << "Starting..." << endl;
+    DrawKruskal((int)nospace.size(), edges, nospace);
+    cout << "Ended." << endl;
+    DrawSwap();
+    
+    char d12;
+    cin >> d12;
+    
     DrawClear();
     DrawMatrix(lcp, n, highest);
     Color(0,1,0);
@@ -858,7 +1129,7 @@ void SolveCipher() {
         cout << "Length mismatch, abort" << endl;
         return;
     }
-    map<float, pair<int,int>> scorevalues;
+    map<float, pair<char,char>> scorevalues;
     int needed = 0;
     vector<float> classes;
     for (int j = 0; j < nstr; ++j) {
@@ -866,22 +1137,23 @@ void SolveCipher() {
             classes.push_back(actual[i] == actual[j] ? 1.f : 0.f);
             if (actual[i] == actual[j]) {
                 Circle((i + .5f) / nstr, (j + .5f) / nstr, .015);
-                scorevalues[lcp[j * n + i]] = {i, j};
+                scorevalues[lcp[j * n + i]] = {actual[i], actual[j]};
                 ++needed;
             }
         }
     }
-    for (auto &p : scorevalues) {
+    for (auto &p : scorevalues)
         cout << "(" << p.second.first << ", " << p.second.second << "): " << p.first << endl;
-    }
+    
     int incorrect = 0, missing = 0;
     auto iter = scorevalues.end();
     iter--;
     float highestgood = iter->first;
-    highestgood = 0;
+    //highestgood = 0;
     for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
-            if (lcp[j * n + i] <= highestgood && actual[i] != actual[j]) {
+            if (lcp[j * n + i] <= highestgood && actual[i] != actual[j]
+                        && actual[i] != ' ' && actual[j] != ' ') {
                 Color(1,0,0);
                 Circle((i + .5f) / nstr, (j + .5f) / nstr, .015);
                 ++incorrect;
@@ -897,6 +1169,8 @@ void SolveCipher() {
             }
         }
     }
+    
+    
     cout << "Highest good is " << highestgood << endl;
     cout << "Needed is " << needed / 2<< endl;
     cout << "Incorrect is " << incorrect / 2<< endl;
@@ -904,30 +1178,70 @@ void SolveCipher() {
     cout << "Highest overall is " << highest << endl;
     DrawSwap();
     
-    LogisticRegression(features, classes);
+    
+    for (int i = 0; i < n; ++i) {
+        if (actual[i] == ' ') continue;
+        Glyph &g = glyphVec[i];
+        bool inserted = false;
+        for (Cluster &c : localClusters) {
+            if (c.GetLabels()[0] == actual[i]) {
+                inserted = true;
+                c.Insert(g, actual[i]);
+            }
+        }
+        if (!inserted) {
+            localClusters.push_back(Cluster());
+            localClusters.back().Insert(g, actual[i]);
+        }
+    }
+    for (Cluster &c : localClusters) {
+        float high = 0;
+        for (int i = 0; i < c.glyphs.size(); ++i) {
+            float glow = INFINITY;
+            for (int j = 0; j < c.glyphs.size(); ++j) {
+                if (i == j) continue;
+                Glyph &g = c.glyphs[i], &h = c.glyphs[j];
+                float curr = ShapeDistance(g, h);
+                if (curr < glow) glow = curr;
+            }
+            if (glow > high) high = glow;
+        }
+        cout << c.GetLabels() << " has diameter ";
+        cout << high << endl;
+    }
+    
+    
+    //LogisticRegression(features, classes);
     char dummy;
     cin >> dummy;
+    localClusters.clear();
+    
+
     for (int i = 0; i < glyphVec.size(); ++i) {
         Glyph &g = glyphVec[i];
         if (g.points.empty()) cipher.push_back(string());
         else {
             cout << "Glyph number " << i << endl;
-            Glyph smoothed = SmoothGlyph(g, 1000, 100, .01);//SmoothGlyph(g, UPSCALE, NRES, STDEV);
+            //Glyph smoothed = SmoothGlyph(g, 1000, 100, .01);
             Cluster *best = nullptr;
             float score = INFINITY;
-            for (Cluster &c : localClusters) {
-                float sc = c.GetDistanceThreaded(smoothed);
+            for (int cc = 0; cc < localClusters.size(); ++cc) {
+                Cluster &c = localClusters[cc];
+                float sc = c.GetShapeContextDiff(g);
                 if (sc < score) {
                     best = &c;
                     score = sc;
                 }
             }
-            if (score > 150) {
+            if (score > 10) {
                 if (best)
                     cout << "Best cluster was " << best->GetLabels() << ", score " << score << endl;
                 localClusters.push_back(Cluster());
                 best = &localClusters.back();
                 best->labels = currlabel++;
+                
+                //best->labels = actual[i];
+                
                 cout << "New cluster. " << endl;
             }
             cout << "Labelled as " << best->labels[0] << " (score " << score << ")" << endl;
@@ -935,10 +1249,67 @@ void SolveCipher() {
             cipher.back() += best->labels[0];
         }
     }
+    for (int i = 0; i < localClusters.size(); ++i) {
+        float best = 0;
+        while (best < 12) {
+            int j;
+            best = ClusterVecMinDist(localClusters, i, j);
+            if (best < 12) {
+                for (Glyph &g : localClusters[j].glyphs)
+                    localClusters[i].Insert(g, localClusters[i].GetLabels()[0]);
+                cout << "Merged " << i << ", " << localClusters[i].GetLabels()[0];
+                cout << " and " << j << ", " << localClusters[j].GetLabels()[0] << endl;
+                localClusters.erase(localClusters.begin() + j);
+            }
+        }
+        cout << "Moving on..." << endl;
+    }
     cout << "Trying to solve: " << endl;
     for (string s : cipher)
         cout << s << " ";
     cout << endl;
+    
+    cipher.clear();
+    cipher.push_back(string());
+    cout << "Regenerating..." << endl;
+    for (int gg = 0; gg < glyphVec.size(); ++gg) {
+        Glyph &g = glyphVec[gg];
+        if (g.points.empty()) { cipher.push_back(string()); continue; }
+        char label;
+        float score = INFINITY;
+        for (int cc = 0; cc < localClusters.size(); ++cc) {
+            Cluster &c = localClusters[cc];
+            float sc = c.GetShapeContextDiff(g);
+            if (sc < score) {
+                label = c.GetLabels()[0];
+                score = sc;
+            }
+        }
+        cipher.back() += label;
+    }
+    
+    cout << "Trying to solve: " << endl;
+    for (string s : cipher)
+        cout << s << " ";
+    cout << endl;
+    
+    string charsUsed;
+    for (string s : cipher)
+        for (char ch : s)
+            if (charsUsed.find(ch) == string::npos)
+                charsUsed += ch;
+    
+    vector<string> cipher2 = cipher;
+    for (string &s : cipher2)
+        for (char &ch : s)
+            ch = 'a' + charsUsed.find(ch);
+    cipher = cipher2;
+    cout << "Trying to solve: " << endl;
+    for (string s : cipher)
+        cout << s << " ";
+    cout << endl;
+    
+    
     glyphVec.clear();
     
     map<string, int> freqs;
@@ -950,7 +1321,34 @@ void SolveCipher() {
     GetNGrams(freqs, ngrams, ng);
     
     RunInference(50, 5000, freqs, ngrams, cipher, ng);
+    glyphVec.clear();
+    gridentry = 0;
 
+}
+
+void NewGlyphVec() {
+    if (currGlyph.points.size()) {
+        cout << "Normalizing..." << endl;
+        currGlyph.Normalize();
+        glyphVec.push_back(currGlyph);
+        currGlyph.Empty();
+        cout << "Recorded glyph, number " << glyphVec.size() << endl;
+    } else {
+        glyphVec.push_back(Glyph());
+        cout << "Recorded blank glyph, number " << glyphVec.size() << endl;
+    }
+}
+
+void CheckGrid() {
+    int gx = mouse[0] * gwidth;
+    int gy = (1 - mouse[1]) * gheight;
+    int gbox = gy * gwidth + gx;
+    if (gbox != gridentry) {
+        NewGlyphVec();
+        if (gbox > gridentry + 1)
+            NewGlyphVec();
+        gridentry = gbox % (gwidth * gheight);
+    }
 }
 
 static bool WaitingForChar = false;
@@ -965,20 +1363,26 @@ void KeyCallback(unsigned char key, int x, int y) {
     }
 
     switch(key) {
+        case 'h':
+            cout << "Evaluating shape contexts" << endl;
+            EvaluateFeature<vector<float>>(GetSCHistograms, ChiSquaredTest);
+            cout << "Evaluating spacial distance" << endl;
+            EvaluateFeature<Point>(
+                [] (Glyph &g, vector<Point> &v) {
+                    Glyph gg = SmoothGlyph(g, 500, 100, .01);
+                    v = gg.points;
+                }, [] (const Point &p, const Point &q) {
+                   return LengthSq(p - q);
+               });
+            cout << "Evaluating integrated curvature" << endl;
+            EvaluateFeature<float>([](Glyph &g, vector<float> &v) {
+                GetCurvature(g, v, true);
+            }, [](const float &a, const float &b) {
+                return (a-b)*(a-b);
+            });
+            break;
         case 'z':
-            if (currGlyph.points.size()) {
-                cout << "Normalizing..." << endl;
-                currGlyph.Normalize();
-                DrawClear();
-                currGlyph.Draw();
-                DrawSwap();
-                glyphVec.push_back(currGlyph);
-                currGlyph.Empty();
-                cout << "Recorded glyph, number " << glyphVec.size() << endl;
-            } else {
-                glyphVec.push_back(Glyph());
-                cout << "Recorded blank glyph, number " << glyphVec.size() << endl;
-            }
+            NewGlyphVec();
             break;
         case 'n':
             WriteVectorData();
@@ -989,8 +1393,11 @@ void KeyCallback(unsigned char key, int x, int y) {
             ReadVectorData(file);
         }
             break;
-        case 'm':
-            SolveCipher();
+        case 'm': {
+            string actual;
+            getline(cin, actual);
+            SolveCipher(actual);
+        }
             break;
         case '`':
             WriteData("data.dat", glyphs);
@@ -1029,7 +1436,7 @@ void KeyCallback(unsigned char key, int x, int y) {
             break;
         case 'v':
             SeedStartTime();
-            CreateClusters(true);
+            CreateClusters3();
             cout << "\nClustered in " << ElapsedMillis() * .001f << " sec\n\n\n\n\n";
             break;
         case 'w': {
@@ -1141,10 +1548,20 @@ void ReshapeCallback(int x, int y) {
     glLoadIdentity();
 }
 
+void LineGrid(int m, int n) {
+    Color(1,1,1);
+    for (int i = 1; i < m ; ++i)
+        LineCon(0, (float)i / m, 1, (float)i / m);
+    for (int j = 1; j < n ; ++j)
+        LineCon((float)j / n, 0, (float)j / n, 1);
+}
+
 void DisplayCallback() {
     glClear(GL_COLOR_BUFFER_BIT);
     
     currGlyph.Draw();
+    
+    LineGrid(gheight, gwidth);
     
     glutSwapBuffers();
 }

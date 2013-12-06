@@ -155,5 +155,14 @@ void GetCurvReverse(Glyph &g, vector<float> &curv, bool accum = false) {
     }
 }
 
+void GetStrokeSpeeds(Glyph &g, vector<float> &vels) {
+    if (g.times.size() < 2) return;
+    for (int i = 1; i < g.times.size(); ++i) {
+        Point disp = g.points[i] - g.points[i-1];
+        float tdelt = g.times[i] - g.times[i-1];
+        vels.push_back(Length(disp) / tdelt);
+    }
+}
+
 
 #endif
