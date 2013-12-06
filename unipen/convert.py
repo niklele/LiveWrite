@@ -1,100 +1,159 @@
 #!/usr/bin/env python
 
 '''
-Parse a specified UNIPEN data set into our format
+Convert a specified UNIPEN data set into our format
 '''
 
 import sys
 import os
+import re
+from pprint import pprint
+
+'''
+1a/   isolated digits
+1b/   isolated upper case
+1c/   isolated lower case
+1d/   isolated symbols (punctuations etc.)
+2/    isolated characters, mixed case
+3/    isolated characters in the context of words or texts
+6/    isolated cursive or mixed-style words (without digits and symbols)
+7/    isolated words, any style, full character set
+8/    text: (minimally two words of) free text, full character set
+'''
+
+data_category = "2"
 
 root = os.path.abspath(".")
-data_path = "CDROM/train_r01_v07/data/1a/" # NOTE: 1a folder is not chosen by user yet
+data_path = os.path.join("CDROM/train_r01_v07/data/", data_category)
 include_path = "CDROM/train_r01_v07/include/"
 
 # time increment = 1 / points per second
-t_inc = 0
+T_INC = 0
 
-# data format is a dict
-    # Label: char
-    # value: (numpoints, [(t x y)])
+# key: (label, segment_start)
+# value: [(t0 x0 y0) ... (tn xn yn)]
 data = {}
 
 '''
 Read information by finding the appropriate stroke data file
 and matching labels to timeseries data
 '''
-def read_data(infile):
+def read_data(segment_file):
 
-    os.chdir(os.path.join(root, data_path))
+    # key = (label, labelNum), value = (start, end)
+    segments = {}
 
-    include_file = ""
-    labels = []
-
-    # get label information
-    with open(infile, "r") as f:
-        for line in f:
-            line = line.strip()
-            if ".INCLUDE" in line:
-                include_file = line.split(" ")[1]
-            if ".SEGMENT" in line:
-                labels.append(line.split(" ")[-1][1:-1])
+    include_file = read_segments(segment_file, segments)
 
     # build empty data dict
-    for l in labels:
-        data[l] = [0, []]
+    for label in segments.keys():
+        data[label] = []
 
-    # read stroke data
+    print "reading strokes for {0} in {1}".format(segment_file, include_file)
+
+    strokes = read_strokes(include_file)
+
+    for label in segments.keys():
+        start, end = segments[label]
+
+        start = int(start)
+        end = int(end)
+        t = 0
+
+        if start == end:
+            t = add_data(strokes[start], t, label)
+
+        else:
+            for i in xrange(start, end):
+                t = add_data(strokes[i], t, label)
+
+    # pprint(data)
+
+'''
+Add each stroke with time information to the data dict
+'''
+def add_data(stroke, t, label):
+
+    # print "add stroke for label {0}".format(label[0])
+
+    for x, y in stroke: # [ (x0,y0) .. (xn,yn) ]
+        val = (t, x, y)
+        data[label].append(val)
+        t = t + T_INC
+    return t
+
+'''
+Read segment information to later match labels to stroke data
+'''
+def read_segments(segment_file, segments):
+
+    with open(segment_file, "r") as f:
+        for line in f:
+            line = line.strip()
+
+            if ".INCLUDE" in line:
+                include_file = line.split(" ")[1]
+
+            if ".SEGMENT" in line:
+                # eg .SEGMENT CHARACTER 73 ? "1" 
+                keyword, seg_type, delineation, quality, label = line.split(" ")
+                
+                label = label[1:-1] # remove ""
+                delineation = delineation.split("-")
+
+                key = (label, delineation[0])
+                segments[key] = (delineation[0], delineation[-1])
+
+                # TODO add colon indexing into delineation
+
+    return include_file
+
+'''
+Build an array of all strokes written
+strokes[i][j] is for stroke i: (xj, yj) NOTE: no time
+'''
+def read_strokes(include_file):
+
+    strokes = []
     i = -1
-    label = ""
-    t = -1
+
     with open(os.path.join(root, include_path, include_file), "r") as f:
 
         for line in f:
             line = line.strip()
 
-            # find .START_BOX for each character in the data file
-            if ".START_BOX" in line:
-
-                # count numpoints for this symbol
-                if i != -1:
-                    numpoints = len(data[label][1])
-                    data[label][0] = numpoints
-
-                # start new symbol
-                t = 0
+            # start new stroke
+            if ".PEN_DOWN" in line:
+                strokes.append([])
                 i = i + 1
 
-                # stop when we're out of labels
-                if i == len(labels):
-                    break
-
-                label = labels[i]
-
-            # ignore first lines, .PEN_UP and .PEN_DOWN
-            elif i != -1 and ".PEN" not in line:
-
+            # use line if it matches the regex of having 2 ints
+            elif re.match("[0-9]+ [0-9]+", line):
                 x, y = line.split(" ")
-                val = (t, x, y)
+                strokes[i].append( (x, y) )
 
-                data[label][1].append(val)
-                t = t + t_inc
+    # pprint(strokes)
 
-    # import pprint
-    # pprint.pprint(data)
+    return strokes
 
+'''
+Write data dict to file according to our format
+'''
 def write_data(outfile):
 
-    os.chdir(os.path.join(root))
+    print "writing data to {0}".format(outfile)
 
     with open(outfile, "w") as f:
 
         for label in data.keys():
 
-            f.write("Label: {0}\n".format(label))
-            f.write("Points: {0}\n".format(data[label][0]))
+            f.write("Label: {0}\n".format(label[0]))
 
-            time_series = data[label][1]
-            for t, x, y in time_series:
+            time_series = data[label]
+            f.write("Points: {0}\n".format(len(time_series)))
+
+            for val in time_series:
+                t, x, y = val
                 f.write("{0} {1} {2}".format(t, x, y) + "\n")
 
             f.write("\n")
@@ -102,12 +161,23 @@ def write_data(outfile):
 if __name__ == '__main__':
 
     if (len(sys.argv) < 4):
-        print "usage: > convert.py infile outfile PPS"
+        print '''usage: convert.py test_folder data_category PPS out_folder \n
+                eg. convert.py aga 2 100 aga-converted '''
 
     else:
-        infile = sys.argv[1]
-        outfile = sys.argv[2]
-        t_inc = 1 / float(sys.argv[3])
+        test_folder = sys.argv[1]
+        data_category = sys.argv[2]
+        T_INC = 1 / float(sys.argv[3])
+        out_folder = sys.argv[4]
 
-        read_data(infile)
-        write_data(outfile)
+        if not os.path.exists(out_folder):
+            os.makedirs(out_folder)
+
+        files = os.listdir(os.path.join(root, data_path, test_folder))
+
+        for f in files:
+            if f.endswith(".dat"):
+                os.chdir(os.path.join(root, data_path, test_folder))
+                read_data(f)
+                os.chdir(os.path.join(root, out_folder))
+                write_data(f)
