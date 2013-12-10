@@ -71,13 +71,18 @@ void MouseCallback(int button, int state, int x, int y) {
     //state = GLUT_UP or GLUT_DOWN
     UpdateMouse(x,y);
     if (state == GLUT_UP) {
+        currGlyph.AddPoint(mouse, ElapsedMillis());
+        Pause();
         currGlyph.MouseUp();
+        currGlyph.penLift.push_back(true);
         timer.SetTimer(500.f);
         //timerValid = true;
     }
     if (state == GLUT_DOWN) {
+        Unpause();
         if (gridOn) CheckGrid();
         currGlyph.AddPoint(mouse, ElapsedMillis());
+        currGlyph.penLift.push_back(false);
         currGlyph.MouseDown();
         timerValid = false;
     }
@@ -1357,7 +1362,21 @@ void SolveCipher() {
     cout << endl;
     */
     
+//    string sentence = "";
+//    while (sentence.empty())
+//        getline(cin, sentence);
+//    cout << sentence << endl;
+    
     int n = (int)glyphVec.size();
+    
+//    if (n != sentence.length()) {
+//        cout << "Wrong sentence length" << endl;
+//        return;
+//    }
+//    vector<bool> actualSame(n * n);
+//    for (int i = 0; i < n * n; ++i)
+//        actualSame[i] = (sentence[i % n] == sentence[i / n]);
+    
     vector<ShapeContext> contextVec;
     for (Glyph &g : glyphVec)
         contextVec.push_back(ShapeContext(g));
@@ -1372,14 +1391,37 @@ void SolveCipher() {
     cout << "Getting MST" << endl;
     
     Kruskal(n, edges, mst);
+    int clusters = 20;
+    vector<Glyph> glyphVecCopy(glyphVec);
+    float scale = .025f;
+    auto drawthunk = [&glyphVecCopy, scale] (vector<Point>& pts) {
+        for (int i = 0; i < pts.size(); ++i) {
+            glyphVecCopy[i].LineDraw(pts[i], scale);
+            Point bottom((float)i / glyphVecCopy.size(), 0);
+            glyphVecCopy[i].LineDraw(bottom, 1.f / glyphVecCopy.size());
+            Color(0,0,1);
+            if (!glyphVecCopy[i].points.empty())
+                LineCon(bottom, pts[i], .05f);
+            Color(1,1,1);
+        }
+    };
+    //DrawKruskal(n, edges, clusters, drawthunk);
     
     
     InitCipher();
     string result = "";
     int numclusters = 15;
-    while (result.empty() && numclusters < 27) {
+    while (/*result.empty() && */numclusters < 27) {
         string ciphertext = GetCipher(n, mst, numclusters);
         cout << "Cipher, for numclusters " << numclusters << ": " << endl;
+        
+//        for (int j = 0; j < n; ++j)
+//            for (int i = j + 1; i < n; ++i)
+//                if (actualSame[j * n + i] && ciphertext[i] != ciphertext[j])
+//                    cout << "Oversegmented: real sentence matches two " << sentence[i] << ", " << i << " " << j << endl;
+//                else if (!actualSame[j * n + i] && ciphertext[i] == ciphertext[j])
+//                    cout << "Wrongly grouped " << i << ": " << sentence[i] << " and "<< j << ": " << sentence[j] << endl;
+        
         cout << ciphertext << endl;
         result = Infer(ciphertext);
         ++numclusters;

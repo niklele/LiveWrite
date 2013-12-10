@@ -22,6 +22,11 @@ public:
     void Draw() {
         for (Point &p : points) Circle(p, .001);
     }
+    void LineDraw(Point origin, float scale = 1.f) {
+        if (points.empty()) return;
+        for (int i = 0; i < points.size() - 1; ++i)
+            LineCon(origin + points[i] * scale, origin + points[i + 1] * scale);
+    }
     void Normalize() {
         width = NormalizePointSet(points, centroid);
         duration = NormalizeFloatSet(times);
@@ -45,6 +50,7 @@ public:
     }
     vector<Point> points;
     vector<float> times;
+    vector<bool> penLift;
     float width, duration;
     Point centroid;
 };

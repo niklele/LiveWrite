@@ -33,7 +33,7 @@ using namespace std;
 #define MAX_WORD_SIZE 25
 #define SUGGESTION_NUM 5
 
-const static int FREQ_CUTOFF = 10;
+const static int FREQ_CUTOFF = 20;
 const float kNExistPenalty = 0.f;
 const float kWordBonus = 1.5f;
 static map<string, int> freqs;
@@ -340,6 +340,24 @@ void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string
     }
 }
 
+void GetCompatibleWords(vector<string> &words, vector<vector<string>> &wordGuesses) {
+    for (string &s : words) {
+        wordGuesses.push_back(vector<string>());
+        for (auto &p : freqs) {
+            string word = p.first;
+            if (word.length() != s.length()) continue;
+            map<char, char> key;
+            bool ok = true;
+            for (int i = 0; i < s.length() && ok; ++i) {
+                if (key.find(s[i]) == key.end())
+                    key[s[i]] = word[i];
+                ok = (key[s[i]] == word[i]);
+            }
+            if (ok) wordGuesses.back().push_back(word);
+        }
+    }
+}
+
 // once upon a time a really amazing thing happened in the capital of this country
 string Infer(string input) {
     
@@ -352,8 +370,11 @@ string Infer(string input) {
     }
     
     vector<vector<string>> wordGuesses;
-    for (string &s : words)
-        wordGuesses.push_back(cipherCodes[CipherCode(s)]);
+    GetCompatibleWords(words, wordGuesses);
+    
+//    for (string &s : words)
+//        wordGuesses.push_back(cipherCodes[CipherCode(s)]);
+    
     for (auto &v : wordGuesses) {
         cout << v.size() << ' ';
         sort(v.begin(), v.end(), [] (const string &a, const string &b) {

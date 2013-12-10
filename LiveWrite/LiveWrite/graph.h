@@ -145,9 +145,43 @@ void DrawKruskal(int n, vector<Edge> &edges, vector<string> &labels) {
         }
         SpringIt(pts, vels, mst, maxw);
     }
-    
-    
 }
 
+
+
+void DrawGraph(vector<Point> &pts, vector<Edge> &edges, float cscale, int clusters) {
+    for (int ei = 0; ei < edges.size(); ++ei) {
+        Edge &e = edges[ei];
+        float c = 1.f - e.w / cscale;
+        if (ei >= edges.size() - clusters) Color(1,c,c);
+        else Color(0,1,0);
+        LineCon(pts[e.a], pts[e.b], .01f);
+    }
+    Color(1,1,1);
+}
+
+void DrawKruskal(int n, vector<Edge> &edges, int clusters, function<void(vector<Point>&)> DrawLabels) {
+    vector<Edge> mst;
+    float maxw = Kruskal(n, edges, mst);
+    const float radius = .45f;
+    const Point center(.5f,.5f);
+    vector<Point> pts, vels;
+    for (int i = 0; i < n; ++i) {
+        Point p = center + DirPt(M_PI * .5f - 2.f * M_PI * i / n) * radius;
+        pts.push_back(p);
+        vels.push_back(Point(0,0));
+    }
+    int i = 0;
+    while (true) {
+        if (!(++i % 10)) {
+            DrawClear();
+            Color(1,1,1);
+            DrawLabels(pts);
+            DrawGraph(pts, mst, maxw, clusters);
+            DrawSwap();
+        }
+        SpringIt(pts, vels, mst, maxw);
+    }
+}
 
 #endif

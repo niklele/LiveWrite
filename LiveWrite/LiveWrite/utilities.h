@@ -192,6 +192,17 @@ void SeedStartTime() {
     StartSeconds = time.tv_sec;
 }
 
+static long PauseTime;
+void Pause() {
+    timeval time;
+    gettimeofday(&time, NULL);
+    PauseTime = time.tv_sec;
+}
+
+void Unpause() {
+    StartSeconds = PauseTime;
+}
+
 float ElapsedMillis(float initial = 0) {
     timeval time;
     gettimeofday(&time, NULL);
