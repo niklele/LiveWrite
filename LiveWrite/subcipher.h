@@ -33,8 +33,12 @@ using namespace std;
 #define MAX_WORD_SIZE 25
 #define SUGGESTION_NUM 5
 
+const static int FREQ_CUTOFF = 10;
 const float kNExistPenalty = 0.f;
 const float kWordBonus = 1.5f;
+static map<string, int> freqs;
+static map<string, int> ngrams;
+static map<string, vector<string>> cipherCodes;
 
 
 // COPYRIGHT CS 107
@@ -51,7 +55,7 @@ bool ReadOneWord(FILE *fp, char buf[])
 }
 
 void ToLowerCase(char *str) {
-    int length = strlen(str);
+    int length = (int)strlen(str);
     //To ensure lower case, flip on the bit in the 2^5 slot, which
     //controls lowercase-ness
     for (int i = 0; i < length; i++) str[i] |= 0x20;
@@ -221,6 +225,173 @@ void ReadCorpus(string filename, map<string, int> &freqs) {
     FillInCorpus(fp, freqs);
     fclose(fp);
     cout << "Successfully read in file " << filename.c_str() << endl;
+}
+
+
+float NGramScore(vector<string> &input) {
+    int n = 3;
+    float score = 0.f;
+    for (string s : input) {
+        s = "$$" + s + "$$";
+        for (int i = 0; i < s.size() - n; ++i)
+            score += log(1.f + ngrams[s.substr(i, n)]);
+    }
+    return score;
+}
+
+string CipherCode(const string &s) {
+    string code = "";
+    int pos = 0, cused = 0;
+    for (char c : s) {
+        int f = (int)s.find(c);
+        if (f == pos++)
+            code += (char)('a' + cused++);
+        else
+            code += code[f];
+    }
+    return code;
+}
+
+vector<string> MaskChars(const string &mask, const vector<string>& words) {
+    vector<string> retv;
+    for (const string &word : words) {
+        bool fits = true;
+        for (int i = 0; i < mask.length() && fits; ++i)
+            fits = (mask[i] == '.' || mask[i] == word[i]);
+        if (fits)
+            retv.push_back(word);
+    }
+    return retv;
+}
+
+vector<string> MaskCharsWithBanned(const string &mask, const string &banned,
+                                   const vector<string>& words) {
+    vector<string> retv;
+    for (const string &word : words) {
+        bool fits = true;
+        for (int i = 0; i < mask.length() && fits; ++i)
+            fits = (mask[i] == word[i] || (mask[i] == '.'
+                                           && banned.find(word[i]) == string::npos));
+        if (fits)
+            retv.push_back(word);
+    }
+    return retv;
+}
+
+float WordScore(vector<string> &input) {
+    float score = 0.f;
+    for (string &s : input) {
+        if (freqs.find(s) == freqs.end()) score += kNExistPenalty;
+        else score += log((float)freqs[s]);
+    }
+    return score;
+}
+
+static map<float, string> solutions;
+static float best = 0;
+void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string>& words,
+                    vector<vector<string>>& wordGuesses, int level) {
+    // Find smallest list in wordGuesses that isn't 1. If none, return!!
+    int easyInd, poss = INT_MAX;
+    bool done = true;
+    for (int i = 0; i < wordGuesses.size(); ++i) {
+        if (answers[i].empty() && wordGuesses[i].size() < poss) {
+            poss = (int)wordGuesses[i].size();
+            easyInd = i;
+        }
+        if (answers[i].empty()) done = false;
+        if (wordGuesses[i].size() == 0) {
+            return;
+        }
+    }
+    if (done) {
+        float score = WordScore(answers) * 5.f + NGramScore(answers);
+        if (score > 0) {
+            string sol = "";
+            for (string &s : answers)
+                sol += s + " ";
+            solutions[score] = sol;
+            if (score > best) {
+                cout << sol << ": " << score << endl;
+                best = score;
+            }
+        }
+        if (done) return;
+    }
+    // Loop o'er all strings in smallest list, recursively calling self
+    for (string &guess : wordGuesses[easyInd]) {
+        if (freqs[guess] < FREQ_CUTOFF) break;
+        vector<int> maskKeyCopy(maskKey);
+        vector<string> answersCopy(answers);
+        answersCopy[easyInd] = guess;
+        vector<vector<string>> wordGuessesCopy(wordGuesses);
+        for (int i = 0; i < guess.size(); ++i)
+            maskKeyCopy[words[easyInd][i] - 'a'] = guess[i] - 'a';
+        for (int i = 0; i < words.size(); ++i) {
+            string mask = PermuteString(maskKeyCopy, words[i]);
+            string range = "";
+            for (char c : maskKeyCopy)
+                if (c != '.' - 'a')
+                    range += (char)(c + 'a');
+            //wordGuessesCopy[i] = MaskCharsWithBanned(mask, range, wordGuessesCopy[i]);
+            wordGuessesCopy[i] = MaskChars(mask, wordGuessesCopy[i]);
+        }
+        RecursiveInfer(maskKeyCopy, answersCopy, words, wordGuessesCopy, level + 1);
+    }
+}
+
+// once upon a time a really amazing thing happened in the capital of this country
+string Infer(string input) {
+    
+    stringstream ss(input);
+    vector<string> words;
+    while (ss.good()) {
+        string next;
+        ss >> next;
+        words.push_back(next);
+    }
+    
+    vector<vector<string>> wordGuesses;
+    for (string &s : words)
+        wordGuesses.push_back(cipherCodes[CipherCode(s)]);
+    for (auto &v : wordGuesses) {
+        cout << v.size() << ' ';
+        sort(v.begin(), v.end(), [] (const string &a, const string &b) {
+            return freqs[a] > freqs[b];
+        });
+    }
+    cout << endl;
+    vector<int> maskKey(26, '.' - 'a');
+    vector<string> answers(words.size(), "");
+    
+    RecursiveInfer(maskKey, answers, words, wordGuesses, 0);
+    cout << "SORTED ORDER: " << endl;
+    
+    if (solutions.empty()) return "";
+    int toDisplay = min((int)solutions.size(), 5);
+    auto iter = solutions.end();
+    for (int i = 0; i < toDisplay; ++i, --iter);
+    for (int i = 0; i < toDisplay; ++i, ++iter)
+        cout << iter->second << ": " << iter->first << endl;
+    --iter;
+    return iter->second;
+}
+
+void InitCipher() {
+    srand ((unsigned int)time(NULL));
+//    string wdir = string(__FILE__);
+//    wdir = wdir.substr(0, wdir.find("subcipher.h"));
+    string wdir = "/Users/ben/Documents/projects/LiveWrite/LiveWrite/LiveWrite/";
+    string prefix = wdir + "corpus";
+    prefix += "_";
+    string freqfile = prefix + "freqs";
+    string gramfile = prefix + "3grams";
+    cout << "Populating maps..." << endl;
+    ReadStringIntMap(freqfile, freqs);
+    ReadStringIntMap(gramfile, ngrams);
+    for (auto &p : freqs)
+        cipherCodes[CipherCode(p.first)].push_back(p.first);
+    cout << "Populated!" << endl;
 }
 
 

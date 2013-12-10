@@ -19,6 +19,7 @@
 #include <fstream>
 #include <thread>
 #include <vector>
+#include <map>
 #include <iomanip>
 #include <cstring>
 #include <execinfo.h>
@@ -128,7 +129,7 @@ inline float Dist2d(float a[2], float b[2]) {
 void WriteStr(const char *mystr, float x = 0, float y = 0) {
     glRasterPos2f(x, y);
     for (int i = 0; mystr[i]; i++)
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, mystr[i]);
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, mystr[i]);
 }
 
 void WriteStrSm(const char *mystr, float x = 0, float y = 0) {
@@ -801,6 +802,19 @@ ostream &operator<<(ostream &os, const vector<float> &v) {
         os << v[i] << ", ";
     os << v.back() << ")";
     return os;
+}
+
+void ReadStringIntMap(const string &filename, map<string, int> &simap) {
+    ifstream infile(filename);
+    cout << "Reading in string-int map " << filename << endl;
+    if (infile.fail()) return;
+    while (!infile.eof()) {
+        string s;
+        int i;
+        infile >> s >> i;
+        simap[s] = i;
+    }
+    infile.close();
 }
 
 #endif

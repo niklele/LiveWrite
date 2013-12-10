@@ -136,11 +136,13 @@ void DrawKruskal(int n, vector<Edge> &edges, vector<string> &labels) {
         pts.push_back(p);
         vels.push_back(Point(0,0));
     }
+    int i = 0;
     while (true) {
-        DrawClear();
-        DrawGraph(pts, mst, labels, maxw);
-        DrawSwap();
-        usleep(1000.f);
+        if (!(++i % 10)) {
+            DrawClear();
+            DrawGraph(pts, mst, labels, maxw);
+            DrawSwap();
+        }
         SpringIt(pts, vels, mst, maxw);
     }
     

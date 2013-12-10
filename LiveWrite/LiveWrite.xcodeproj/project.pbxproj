@@ -32,7 +32,6 @@
 		B59FE9A4183B8364006F4726 /* vecdata0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata0.dat; sourceTree = "<group>"; };
 		B59FE9A5183B8364006F4726 /* vecdata1.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata1.dat; sourceTree = "<group>"; };
 		B59FE9A6183B85E6006F4726 /* vecdata2.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata2.dat; sourceTree = "<group>"; };
-		B59FE9A7183E0187006F4726 /* amywldrp.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = amywldrp.dat; sourceTree = "<group>"; };
 		B59FE9A81841301A006F4726 /* shapecontext.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = shapecontext.h; sourceTree = "<group>"; };
 		B5A1E5CF1838348400FDBE04 /* benlwtrack0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwtrack0.dat; sourceTree = "<group>"; };
 		B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = benlwmouse1.dat; sourceTree = "<group>"; };
@@ -40,6 +39,8 @@
 		B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = sarahtest0.dat; sourceTree = "<group>"; };
 		B5A1E5D3183B2AB800FDBE04 /* subcipher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = subcipher.h; path = ../subcipher.h; sourceTree = "<group>"; };
 		B5A1E5D4183B34B900FDBE04 /* vecdata.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecdata.dat; sourceTree = "<group>"; };
+		B5A6018D1854389500EF2623 /* corpus_3grams */ = {isa = PBXFileReference; lastKnownFileType = text; path = corpus_3grams; sourceTree = "<group>"; };
+		B5A6018E1854389500EF2623 /* corpus_freqs */ = {isa = PBXFileReference; lastKnownFileType = text; path = corpus_freqs; sourceTree = "<group>"; };
 		B5A7E5091841CE42006F3C43 /* vecspider.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecspider.dat; sourceTree = "<group>"; };
 		B5A7E50A1841CE4C006F3C43 /* vecvermin.dat */ = {isa = PBXFileReference; lastKnownFileType = text; path = vecvermin.dat; sourceTree = "<group>"; };
 		B5A7E50B184BE69E006F3C43 /* graph.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = graph.h; sourceTree = "<group>"; };
@@ -86,12 +87,13 @@
 		B5DFA4D0182D52BD0019B0C5 /* LiveWrite */ = {
 			isa = PBXGroup;
 			children = (
+				B5A6018D1854389500EF2623 /* corpus_3grams */,
+				B5A6018E1854389500EF2623 /* corpus_freqs */,
 				B58303761834B81D00842264 /* benlwmouse0.dat */,
 				B5A1E5D01839DDF600FDBE04 /* benlwmouse1.dat */,
 				B5A1E5D2183A0EFF00FDBE04 /* sarahtest0.dat */,
 				B5A7E50A1841CE4C006F3C43 /* vecvermin.dat */,
 				B5A7E5091841CE42006F3C43 /* vecspider.dat */,
-				B59FE9A7183E0187006F4726 /* amywldrp.dat */,
 				B5A1E5D11839E54400FDBE04 /* sarahlwmouse0.dat */,
 				B5A1E5D4183B34B900FDBE04 /* vecdata.dat */,
 				B59FE9A4183B8364006F4726 /* vecdata0.dat */,

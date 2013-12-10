@@ -33,6 +33,9 @@ static char currlabel = 'a';
 static map<char, vector<Glyph>> glyphs;
 static vector<Glyph> glyphVec;
 static Glyph currGlyph;
+static Glyph compGlyph;
+static vector<float> LogRegTheta;
+const static bool gridOn = true;
 
 static string wdir;
 void Init() {
@@ -73,7 +76,7 @@ void MouseCallback(int button, int state, int x, int y) {
         //timerValid = true;
     }
     if (state == GLUT_DOWN) {
-        CheckGrid();
+        if (gridOn) CheckGrid();
         currGlyph.AddPoint(mouse, ElapsedMillis());
         currGlyph.MouseDown();
         timerValid = false;
@@ -843,10 +846,10 @@ float GetGlyphDistance(Glyph &g, Glyph &h, vector<float> &feat, bool verbose = f
 
 inline float Sigmoid(float z) { return 1.f / (1.f + expf(-z)); }
 
-void LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 10000) {
-    float alpha = .01f;
+vector<float> LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 10000) {
+    float alpha = .001f;
     int m = (int)X.size();
-    cout << X[100][0] << endl;
+    cout << X[100][0] << ' ';
     int n = (int)X[0].size();
     vector<float> theta(n, 0);
     cout << "Beginning logistic regression with n = " << n << ", m = " << m << endl;
@@ -859,33 +862,43 @@ void LogisticRegression(vector<vector<float>> &X, vector<float> &y, int iters = 
                 hyp += theta[j] * X[i][j];
             hyp = Sigmoid(hyp);
             
-            //if (y[i]) alpha *= 100.f;
+            if (y[i]) alpha *= 100.f;
             for (int j = 0; j < n; ++j)
                 newtheta[j] += alpha * (y[i] - hyp) * X[i][j];
-            //if (y[i]) alpha /= 100.f;
+            if (y[i]) alpha /= 100.f;
             
         }
         theta = newtheta;
+        if (!(iter % 100)) cout << ".";
     }
-    for (int j = 0; j < n; ++j)
+    cout << endl << theta << endl;
+    for (int j = 1; j < n; ++j)
         theta[j] /= theta[0];
+    theta[0] = 1.f;
     cout << "Logistic regression produced the following theta parameters" << endl;
     cout << "in " << iters << " iterations and using alpha value " << alpha << ": " << endl;
-    cout << "(";
-    for (int i = 0; i < n; ++i)
-        cout << " " << theta[i] << " ";
-    cout << ")" << endl;
+    cout << theta << endl;
     int fails = 0;
+    int fails1 = 0, fails0 = 0, tot1 = 0, tot0 = 0;
     for (int i = 0; i < m; ++i) {
         float hyp = 0.f;
         for (int j = 0; j < n; ++j)
             hyp += theta[j] * X[i][j];
-        hyp = (Sigmoid(hyp) >= .5f ? 1.f : 0.f);
-        if (hyp != y[i])
+        float asgn = (Sigmoid(hyp) >= .5f ? 1.f : 0.f);
+        if (y[i] == 0.f) tot0++;
+        else tot1++;
+        if (asgn != y[i]) {
+            if (y[i] == 0.f) fails0++;
+            else fails1++;
             fails++;
-            cout << "Failure on data point " << i << ", supposed to be " << y[i] << endl;
+            //cout << "Failure on data point " << i << ", supposed to be " << y[i]
+            //    << ", but hyp was " << hyp << ", assigned to " << asgn << endl;
+        }
     }
     cout << "Fails on " << fails << " examples" << endl;
+    cout << "0 fails : " << fails0 << " of " << tot0 << " (" << (float)fails0/tot0 << ")" << endl;
+    cout << "1 fails : " << fails1 << " of " << tot1 << " (" << (float)fails1/tot1 << ")" << endl;
+    return theta;
 }
 
     
@@ -975,14 +988,16 @@ void AnalyzeCostMat(vector<float> &costmat, string &labels) {
                 match = labels[i];
             }
         }
-        if (match != labels[j]) ++miscat;
+        if (match != labels[j]) { ++miscat; cout << labels[j] << match << ' '; }
     }
-    cout << "Miscat: " << miscat << ". As a fraction, " << (float)miscat / n / n << endl;
+    cout << endl;
+    cout << "Miscat: " << miscat << ". As a fraction, " << (float)miscat / n << endl;
 }
 
 template <class T>
 void EvaluateFeature(function<void(Glyph&, vector<T>&)> getSeries,
-                     function<float(const T&, const T&)> compareT) {
+                     function<float(const T&, const T&)> compareT,
+                     vector<vector<float>> &X) {
     vector<vector<T>> timeseries;
     string labels = "";
     cout << "Generating feature vectors" << endl;
@@ -1019,6 +1034,7 @@ void EvaluateFeature(function<void(Glyph&, vector<T>&)> getSeries,
     for (thread &t : threads)
         t.join();
     
+    int fInd = 0;
     for (int j = 0; j < n; ++j) {
         for (int i = 0; i < n; ++i) {
             if (i < j) {
@@ -1028,6 +1044,7 @@ void EvaluateFeature(function<void(Glyph&, vector<T>&)> getSeries,
                 costmatLCP[j*n+i] = 0;
                 costmatDirect[j*n+i] = 0;
             } else {
+                X[fInd++].push_back(costmatLCP[j*n+i]);
                 //costmatLCP[j*n+i] = LeastCost<T>(timeseries[i], timeseries[j], compareT, 1.f, false);
                 float dir = 0;
                 for (int k = 0; k < L; ++k)
@@ -1048,15 +1065,46 @@ void EvaluateFeature(function<void(Glyph&, vector<T>&)> getSeries,
     cout << "Analyzing LCP comp" << endl;
     AnalyzeCostMat(costmatLCP, labels);
     cout << "Done evaluating!" << endl << endl;
+    
 }
 
-void SolveCipher(string actual) {
-    cout << std::setprecision(3);
-    
+string GetCipher(int n, vector<Edge>& mst, int numclusters) {
+    cout << "Making cipher" << endl;
+    int cutoff = (int)mst.size() - (numclusters - 1);
+    char curr = 'a';
+    string cipher(n, '.');
+    for (int i = 0; i < glyphVec.size(); ++i)
+        if (glyphVec[i].points.empty())
+            cipher[i] = ' ';
+    for (int i = 0; i < cutoff; ++i) {
+        Edge &e = mst[i];
+        if (cipher[e.a] != '.')
+            cipher[e.b] = cipher[e.a];
+        else if (cipher[e.b] != '.')
+            cipher[e.a] = cipher[e.b];
+        else cipher[e.a] = cipher[e.b] = curr++;
+        for (int j = i + 1; j < cutoff; ++j) {
+            Edge &d = mst[j];
+            if (cipher[d.a] != '.')
+                cipher[d.b] = cipher[d.a];
+            else if (cipher[e.b] != '.')
+                cipher[d.a] = cipher[d.b];
+        }
+        
+    }
+    for (int i = 0; i < cipher.size(); ++i)
+        if (cipher[i] == '.')
+            cipher[i] = curr++;
+    return cipher;
+}
+
+void SolveCipher() {
+    /*
     vector<Cluster> localClusters;
     char currlabel = 'a';
     vector<string> cipher;
     cipher.push_back(string());
+    int n = (int)glyphVec.size();
     
     //string actual = "something else in this song cannot be remembered";
     //string actual = "the poison from a black widow spider is about fifteen times more potent";
@@ -1077,7 +1125,6 @@ void SolveCipher(string actual) {
     for (Glyph &g : glyphVec)
         contextVec.push_back(ShapeContext(g));
     
-    int n = (int)glyphVec.size();
     vector<float> lcp(n * n, 0);
     float highest = 0.f;
     vector<vector<float>> features;
@@ -1178,7 +1225,6 @@ void SolveCipher(string actual) {
     cout << "Highest overall is " << highest << endl;
     DrawSwap();
     
-    
     for (int i = 0; i < n; ++i) {
         if (actual[i] == ' ') continue;
         Glyph &g = glyphVec[i];
@@ -1216,7 +1262,8 @@ void SolveCipher(string actual) {
     cin >> dummy;
     localClusters.clear();
     
-
+*/
+    /*
     for (int i = 0; i < glyphVec.size(); ++i) {
         Glyph &g = glyphVec[i];
         if (g.points.empty()) cipher.push_back(string());
@@ -1308,19 +1355,37 @@ void SolveCipher(string actual) {
     for (string s : cipher)
         cout << s << " ";
     cout << endl;
+    */
+    
+    int n = (int)glyphVec.size();
+    vector<ShapeContext> contextVec;
+    for (Glyph &g : glyphVec)
+        contextVec.push_back(ShapeContext(g));
+    vector<Edge> edges, mst;
+    cout << "Calculating compare...";
+    for (int j = 0; j < n; ++j) {
+        for (int i = j + 1; i < n; ++i) {
+            float w = compare(contextVec[i], contextVec[j], 5, 12);
+            if (w) edges.push_back(Edge(i, j, w));
+        }
+    }
+    cout << "Getting MST" << endl;
+    
+    Kruskal(n, edges, mst);
     
     
-    glyphVec.clear();
+    InitCipher();
+    string result = "";
+    int numclusters = 15;
+    while (result.empty() && numclusters < 27) {
+        string ciphertext = GetCipher(n, mst, numclusters);
+        cout << "Cipher, for numclusters " << numclusters << ": " << endl;
+        cout << ciphertext << endl;
+        result = Infer(ciphertext);
+        ++numclusters;
+    }
+    cout << "done!!! " << endl;
     
-    map<string, int> freqs;
-    map<string, int> ngrams;
-    int ng = 3;
-    
-    ReadCorpus("/Users/ben/Documents/projects/corpus", freqs);
-    cout << "Found " << freqs.size() << " words" << endl;
-    GetNGrams(freqs, ngrams, ng);
-    
-    RunInference(50, 5000, freqs, ngrams, cipher, ng);
     glyphVec.clear();
     gridentry = 0;
 
@@ -1363,9 +1428,85 @@ void KeyCallback(unsigned char key, int x, int y) {
     }
 
     switch(key) {
-        case 'h':
+        case 'k': {
+            vector<Edge> edges, mst;
+            int n = (int)currGlyph.points.size();
+            for (int j = 0; j < n; ++j) {
+                for (int i = j + 1; i < n; ++i) {
+                    edges.push_back(Edge(i, j,
+                            Length(currGlyph.points[i] - currGlyph.points[j])));
+                }
+            }
+            Kruskal(n, edges, mst);
+            DrawClear();
+            Color(1,1,1);
+            for (Point &p : currGlyph.points)
+                Circle(p, .001f);
+            int i;
+            for (i = 0; i < mst.size() - 3; ++i)
+                LineCon(currGlyph.points[mst[i].a], currGlyph.points[mst[i].b]);
+            Color(0,1,0);
+            LineCon(currGlyph.points[mst[i].a], currGlyph.points[mst[i].b]);
+            ++i;
+            Color(0,0,1);
+            LineCon(currGlyph.points[mst[i].a], currGlyph.points[mst[i].b]);
+            ++i;
+            Color(1,0,0);
+            LineCon(currGlyph.points[mst[i].a], currGlyph.points[mst[i].b]);
+            ++i;
+            DrawSwap();
+            Color(1,1,1);
+            currGlyph.Empty();
+        }
+            break;
+        case '[':
+            compGlyph = currGlyph;
+            currGlyph.Empty();
+            cout << "Saved it" << endl;
+            break;
+        case ']': {
+            vector<float> x(4);
+            x[0] = 1;
+            vector<vector<float>> sch1, sch2;
+            GetSCHistograms(compGlyph, sch1);
+            GetSCHistograms(currGlyph, sch2);
+            x[1] = LeastCost<vector<float>>(sch1, sch2, ChiSquaredTest, 1.f, false);
+            Glyph g1 = SmoothGlyph(compGlyph, 500, 100, .01);
+            Glyph g2 = SmoothGlyph(currGlyph, 500, 100, .01);
+            x[2] = LeastCost<Point>(g1.points, g2.points, [] (const Point &p, const Point &q) {
+                return LengthSq(p - q);
+            }, 1.f, false);
+            vector<float> c1, c2;
+            GetCurvature(g1, c1, true);
+            GetCurvature(g2, c2, true);
+            x[3] = LeastCostFloat(c1, c2, 1.f, false);
+            float result = 0;
+            for (int i = 0; i < 4; ++i)
+                result += LogRegTheta[i] * x[i];
+            cout << "Predicted is " << result << endl;
+            currGlyph.Empty();
+        }
+            break;
+        case 'h': {
+            vector<vector<float>> X;
+            vector<float> y;
+            int n = 0;
+            string labels = "";
+            for (auto &p : glyphs) {
+                n += p.second.size();
+                labels += string(p.second.size(), p.first);
+            }
+            for (int j = 0; j < n; ++j) {
+                for (int i = j + 1; i < n; ++i) {
+                    X.push_back(vector<float>());
+                    X.back().push_back(1.f);
+                    y.push_back(labels[i] == labels[j] ? 1.f : 0.f);
+                }
+            }
             cout << "Evaluating shape contexts" << endl;
-            EvaluateFeature<vector<float>>(GetSCHistograms, ChiSquaredTest);
+            EvaluateFeature<vector<float>>(GetSCHistograms, ChiSquaredTest, X);
+            LogisticRegression(X, y);
+            cout << endl;
             cout << "Evaluating spacial distance" << endl;
             EvaluateFeature<Point>(
                 [] (Glyph &g, vector<Point> &v) {
@@ -1373,13 +1514,18 @@ void KeyCallback(unsigned char key, int x, int y) {
                     v = gg.points;
                 }, [] (const Point &p, const Point &q) {
                    return LengthSq(p - q);
-               });
+                }, X);
+            LogisticRegression(X, y);
+            cout << endl;
             cout << "Evaluating integrated curvature" << endl;
             EvaluateFeature<float>([](Glyph &g, vector<float> &v) {
                 GetCurvature(g, v, true);
             }, [](const float &a, const float &b) {
                 return (a-b)*(a-b);
-            });
+            }, X);
+            LogRegTheta = LogisticRegression(X, y);
+            cout << endl;
+        }
             break;
         case 'z':
             NewGlyphVec();
@@ -1394,9 +1540,9 @@ void KeyCallback(unsigned char key, int x, int y) {
         }
             break;
         case 'm': {
-            string actual;
-            getline(cin, actual);
-            SolveCipher(actual);
+  //          string actual;
+//            getline(cin, actual);
+            SolveCipher();
         }
             break;
         case '`':
@@ -1561,7 +1707,8 @@ void DisplayCallback() {
     
     currGlyph.Draw();
     
-    LineGrid(gheight, gwidth);
+    if (gridOn)
+        LineGrid(gheight, gwidth);
     
     glutSwapBuffers();
 }
