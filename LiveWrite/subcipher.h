@@ -37,7 +37,9 @@ const static int FREQ_CUTOFF = 20;
 const float kNExistPenalty = 0.f;
 const float kWordBonus = 1.5f;
 static map<string, int> freqs;
-static map<string, int> ngrams;
+// static map<string, int> ngrams;
+static map<pair<string, string>, int> wordgrams;
+
 static map<string, vector<string>> cipherCodes;
 
 
@@ -61,12 +63,30 @@ void ToLowerCase(char *str) {
     for (int i = 0; i < length; i++) str[i] |= 0x20;
 }
 
+// void FillInCorpus(FILE *fp, map<string, int> &freqs) {
+//     char buf[26];
+//     while (ReadOneWord(fp, buf)) {
+//     	ToLowerCase(buf);
+//         freqs[string(buf)]++;
+//     }
+// }
+
 void FillInCorpus(FILE *fp, map<string, int> &freqs) {
+    cout << "read in corpus for frequencies and word grams" << endl;
+    string curr = "";
+    string last = "";
     char buf[26];
     while (ReadOneWord(fp, buf)) {
-    	ToLowerCase(buf);
-        freqs[string(buf)]++;
+        ToLowerCase(buf);
+        curr = string(buf);
+        freqs[curr]++;
+        if (last != "") {
+            pair<string, string> p(last,curr);
+            wordgrams[p]++;
+        }
+        last = curr;
     }
+    cout << "corpus done" << endl;
 }
 
 int Min3i(int a, int b, int c) {
@@ -239,6 +259,19 @@ float NGramScore(vector<string> &input) {
     return score;
 }
 
+float WordGramScore(vector<string> &input) {
+    float score = 0.f;
+    for (int i=0; i<input.size() - 1; ++i) {
+        pair<string, string> p(input[i], input[i+1]);
+
+        float log_wordgram = log((float) wordgrams[p]);
+        log_wordgram = (log_wordgram < 0) ? 0 : log_wordgram;
+
+        score += log_wordgram;
+    }
+    return score;
+}
+
 string CipherCode(const string &s) {
     string code = "";
     int pos = 0, cused = 0;
@@ -305,7 +338,8 @@ void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string
         }
     }
     if (done) {
-        float score = WordScore(answers) * 5.f + NGramScore(answers);
+        // float score = WordScore(answers) * 5.f + NGramScore(answers);
+        float score = WordScore(answers) + WordGramScore(answers) * 4.f;
         if (score > 0) {
             string sol = "";
             for (string &s : answers)
@@ -409,7 +443,7 @@ void InitCipher() {
     string gramfile = prefix + "3grams";
     cout << "Populating maps..." << endl;
     ReadStringIntMap(freqfile, freqs);
-    ReadStringIntMap(gramfile, ngrams);
+    // ReadStringIntMap(gramfile, ngrams);
     for (auto &p : freqs)
         cipherCodes[CipherCode(p.first)].push_back(p.first);
     cout << "Populated!" << endl;
