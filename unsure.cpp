@@ -32,6 +32,7 @@ const static int FREQ_CUTOFF = 0;
 
 static map<string, int> freqs;
 static map<string, int> ngrams;
+static map<pair<string, string>, int> wordgrams;
 static map<string, vector<string>> cipherCodes;
 
 float randuni() {
@@ -67,11 +68,21 @@ void ToLowerCase(char *str) {
 }
 
 void FillInCorpus(FILE *fp, map<string, int> &freqs) {
+    cout << "read in corpus for frequencies and word grams" << endl;
+    string curr = "";
+    string last = "";
     char buf[26];
     while (ReadOneWord(fp, buf)) {
     	ToLowerCase(buf);
-        freqs[string(buf)]++;
+        curr = string(buf);
+        freqs[curr]++;
+        if (last != "") {
+            pair<string, string> p(last,curr);
+            wordgrams[p]++;
+        }
+        last = curr;
     }
+    cout << "corpus done" << endl;
 }
 
 int Min3i(int a, int b, int c) {
@@ -327,6 +338,20 @@ float NGramScore(vector<string> &input) {
     return score;
 }
 
+float WordGramScore(vector<string> &input) {
+    float score = 0.f;
+    for (int i=0; i<input.size() - 1; ++i) {
+        pair<string, string> p(input[i], input[i+1]);
+
+        float log_wordgram = log((float) wordgrams[p]);
+        log_wordgram = (log_wordgram < 0) ? 0 : log_wordgram;
+        // cout << "WG @ (" << input[i] << "," << input[i+1] << "): " << log_wordgram << endl;
+
+        score += log_wordgram;
+    }
+    return score;
+}
+
 float WordScore(vector<string> &input) {
     float score = 0.f;
     for (string &s : input) {
@@ -424,8 +449,9 @@ static int totalIters = 0;
 void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string>& words, 
                             vector<vector<string>>& wordGuesses, int level) {
     ++totalIters;
-    if (!(totalIters % 1000))
+    if (!(totalIters % 10000))
         cout << totalIters << endl;
+
     // Find smallest list in wordGuesses that isn't 1. If none, return!!
     int easyInd, poss = INT_MAX;
     bool done = true;
@@ -443,7 +469,12 @@ void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string
         }
     }
     if (done) {
-        float score = WordScore(answers) * 5.f + NGramScore(answers);
+        // float score = WordScore(answers) * 5.f + NGramScore(answers);
+        // float score = WordScore(answers) * 5.f + WordGramScore(answers);
+        float ws = WordScore(answers);
+        float wgs = WordGramScore(answers);
+        float score = ws + wgs * 4.f;
+        // cout << "WS: " << ws << " WGS: " << wgs << " score: " << score << endl;
         if (score >= 0) {
             string sol = "";
             for (string &s : answers)
@@ -460,7 +491,8 @@ void RecursiveInfer(vector<int>& maskKey, vector<string>& answers, vector<string
             if (score > best) best = score;
 
         }
-        if (done) return;
+        // if (done) return;
+        return;
     }
     // Loop o'er all strings in smallest list, recursively calling self
     for (int g = 0; g < wordGuesses[easyInd].size(); ++g) {
@@ -565,13 +597,20 @@ int main(int argc, const char *argv[])
     prefix += "_";
     string freqfile = prefix + "freqs";
     string gramfile = prefix + "3grams";
-    //ReadStringIntMap("LiveWrite/COCA_5000.txt", freqs);
+
+    FILE *fp = fopen(argv[1], "r");
+    if (!fp) {
+        printf("Cannot open file \"%s\"\n", argv[1]);
+        return 0;
+    }
+    FillInCorpus(fp, freqs);
+    fclose(fp);
 
     string dictfile = "wordsEn.txt";
     ReadStringIntMap(dictfile, freqs, false);
     map<string, int> corpus;
     ReadStringIntMap(freqfile, corpus);
-    ReadStringIntMap(gramfile, ngrams);
+    // ReadStringIntMap(gramfile, ngrams);
     for (auto &p : freqs)
             p.second += corpus[p.first];
     /*
@@ -598,55 +637,51 @@ int main(int argc, const char *argv[])
 
     cout << "Mapped cipher codes" << endl;
 
-    cout << "Input a one line phrase: " << endl;
-    string inputline;
-    getline(cin, inputline);
+    // while (true)
+    // {
+        cout << endl << "Input a one line phrase: " << endl;
+        string inputline;
+        getline(cin, inputline);
 
-    Infer(inputline);
+        Infer(inputline);
+    // }
+
     return 0;
 
 
-    string inputnos = "";
-    vector<float> wordL;
-    wordL.push_back(0);
-    for (char c : inputline) {
-        if (c == ' ') {
-            wordL.push_back(0);
-        } else {
-            inputnos += c;
-            wordL.back()++;
-        }
-    }
-    int nchar = inputnos.size();
-    vector<float> probmat(nchar * nchar);
-    for (int j = 0; j < nchar; ++j) {
-        for (int i = 0; i < nchar; ++i) {
-            float p = 1.f;
-            if (j > i) p = probmat[i * nchar + j];
-            if (i > j) {
-                float match = (inputnos[i] == inputnos[j] ? 1.f : 0.f);
-                float bias = 0.f;
-                p = match * (1.f - bias) + randuni() * bias;
-                //if (trial(.1f) && p == 0.f) p = randuni() * .5f + .5f;
-            }
-            probmat[j * nchar + i] = p;
-            //cout << inputnos[i] << inputnos[j] << p << "  ";
-        }
-        //cout << endl;
-    }
-    cout << "Input: " << inputnos << endl;
-    ProbInf(probmat, nchar, wordL);
-
-
-    // FILE *fp = fopen(argv[1], "r");
-    // if (!fp) {
-    // 	printf("Cannot open file \"%s\"\n", argv[1]);
-    // 	return 0;
+    // string inputnos = "";
+    // vector<float> wordL;
+    // wordL.push_back(0);
+    // for (char c : inputline) {
+    //     if (c == ' ') {
+    //         wordL.push_back(0);
+    //     } else {
+    //         inputnos += c;
+    //         wordL.back()++;
+    //     }
     // }
-    // map<string, int> freqs;
-    // FillInCorpus(fp, freqs);
-    // fclose(fp);
-    // cout << "Found " << freqs.size() << " words" << endl;
+    // int nchar = inputnos.size();
+    // vector<float> probmat(nchar * nchar);
+    // for (int j = 0; j < nchar; ++j) {
+    //     for (int i = 0; i < nchar; ++i) {
+    //         float p = 1.f;
+    //         if (j > i) p = probmat[i * nchar + j];
+    //         if (i > j) {
+    //             float match = (inputnos[i] == inputnos[j] ? 1.f : 0.f);
+    //             float bias = 0.f;
+    //             p = match * (1.f - bias) + randuni() * bias;
+    //             //if (trial(.1f) && p == 0.f) p = randuni() * .5f + .5f;
+    //         }
+    //         probmat[j * nchar + i] = p;
+    //         //cout << inputnos[i] << inputnos[j] << p << "  ";
+    //     }
+    //     //cout << endl;
+    // }
+    // cout << "Input: " << inputnos << endl;
+    // ProbInf(probmat, nchar, wordL);
+
+
+
 
     // int total = 0;
     // for (auto &p : freqs) total += p.second;
@@ -659,5 +694,5 @@ int main(int argc, const char *argv[])
     // outfile.close();
 
     //RunInference(50, 5000, freqs, ngrams, input, n);
-    return 0;
+    // return 0;
 }
